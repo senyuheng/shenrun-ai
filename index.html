@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>申论AI导师 - 测试版</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, sans-serif; background: #f7f8fa; height: 100vh; display: flex; flex-direction: column; }
+
+.tabs { display: flex; background: #fff; border-bottom: 1px solid #eee; flex-shrink: 0; }
+.tab { flex: 1; text-align: center; padding: 14px 0; font-size: 15px; color: #999; cursor: pointer; }
+.tab.active { color: #007aff; border-bottom: 3px solid #007aff; font-weight: bold; }
+.tab-setting { padding: 14px 16px; font-size: 20px; cursor: pointer; }
+
+.panel { flex: 1; overflow: hidden; display: none; flex-direction: column; padding: 16px; }
+.panel.active { display: flex; }
+
+/* 资料区 */
+.upload-btn { border: 2px dashed #ccc; border-radius: 10px; padding: 20px; text-align: center; color: #666; cursor: pointer; margin-bottom: 12px; flex-shrink: 0; }
+.doc-content { flex: 1; overflow-y: auto; background: #fff; border-radius: 10px; padding: 16px; font-size: 15px; line-height: 1.9; color: #333; user-select: text; position: relative; }
+.doc-content.empty-state { color: #bbb; font-size: 14px; display: flex; align-items: center; justify-content: center; text-align: center; }
+.doc-title { font-weight: bold; font-size: 16px; margin-bottom: 12px; color: #111; }
+
+/* 划词弹窗 */
+#selection-popup {
+  position: fixed;
+  background: #1c1c1e;
+  border-radius: 10px;
+  padding: 6px 4px;
+  display: none;
+  z-index: 999;
+  flex-direction: row;
+  gap: 4px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+.pop-btn {
+  color: #fff;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+  border: none;
+  background: transparent;
+}
+.pop-btn:hover { background: #3a3a3c; }
+
+/* 作答区 */
+textarea { flex: 1; border: 1px solid #eee; border-radius: 10px; padding: 14px; font-size: 16px; line-height: 1.8; resize: none; background: #fff; margin-bottom: 12px; }
+.btn-primary { background: #007aff; color: #fff; border: none; border-radius: 10px; padding: 14px; font-size: 16px; cursor: pointer; width: 100%; flex-shrink: 0; }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* 对话区 */
+.chat { flex: 1; overflow-y: auto; }
+.bubble { margin-bottom: 20px; }
+.role-label { font-size: 12px; color: #999; margin-bottom: 4px; }
+.bubble-text { display: block; border-radius: 10px; padding: 12px 14px; font-size: 15px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+.bubble.user .bubble-text { background: #e8f4ff; }
+.bubble.assistant .bubble-text { background: #fff; border-left: 4px solid #007aff; }
+.bubble.context-msg .bubble-text { background: #f0f0f0; border-left: 4px solid #ccc; font-size: 13px; color: #666; }
+.typing { color: #999; font-size: 14px; padding: 8px 0; }
+.empty { text-align: center; color: #bbb; font-size: 14px; margin-top: 40px; line-height: 1.8; }
+
+/* 设置区 */
+.setting-section { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+.setting-label { font-size: 14px; font-weight: bold; color: #333; margin-bottom: 10px; }
+.setting-input { border: 1px solid #eee; border-radius: 8px; padding: 10px; font-size: 14px; width: 100%; }
+.setting-hint { margin-top: 8px; font-size: 12px; color: #999; line-height: 1.6; }
+.btn-danger { background: #fff; color: #ff3b30; border: 1px solid #ff3b30; border-radius: 10px; padding: 12px; font-size: 15px; cursor: pointer; width: 100%; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab(0)">参考资料</div>
+  <div class="tab" onclick="switchTab(1)">申论作答</div>
+  <div class="tab" onclick="switchTab(2)">问导师</div>
+  <div class="tab-setting" onclick="switchTab(3)">⚙️</div>
+</div>
+
+<!-- 划词弹窗 -->
+<div id="selection-popup">
+  <button class="pop-btn" onclick="askSelected(0)">📖 解释</button>
+  <button class="pop-btn" onclick="askSelected(1)">✍️ 申论用法</button>
+  <button class="pop-btn" onclick="askSelected(2)">🎯 用作论据</button>
+  <button class="pop-btn" onclick="showCustomInput()">💬 自定义问</button>
+</div>
+
+<!-- 自定义提问输入框 -->
+<div id="custom-input-bar" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#fff;padding:12px;border-top:1px solid #eee;z-index:1000;display:none;flex-direction:row;gap:8px;">
+  <input id="custom-question" placeholder="输入你的问题..." style="flex:1;border:1px solid #eee;border-radius:8px;padding:10px;font-size:15px;" />
+  <button onclick="submitCustom()" style="background:#007aff;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:15px;cursor:pointer;">问</button>
+  <button onclick="hideCustomInput()" style="background:#f0f0f0;color:#666;border:none;border-radius:8px;padding:10px 12px;font-size:15px;cursor:pointer;">✕</button>
+</div>
+
+<!-- 资料区 -->
+<div class="panel active" id="panel-0">
+  <div class="upload-btn" onclick="document.getElementById('file-input').click()">📄 点击上传政策文件（.txt）</div>
+  <input type="file" id="file-input" accept=".txt" style="display:none" onchange="loadFile(this)" />
+  <div class="doc-content empty-state" id="doc-content">
+    <span>上传 .txt 格式的政策文件<br>（如《政府工作报告》《半月谈》）<br><br>选中任意文字可快速询问AI导师</span>
+  </div>
+</div>
+
+<!-- 作答区 -->
+<div class="panel" id="panel-1">
+  <textarea id="essay" placeholder="在此输入你的申论作答...&#10;&#10;提示：先写一段，AI导师会用苏格拉底式方法引导你改进。"></textarea>
+  <button class="btn-primary" id="submit-btn" onclick="submitEssay()">提交给AI导师批改</button>
+</div>
+
+<!-- 对话区 -->
+<div class="panel" id="panel-2">
+  <div class="chat" id="chat">
+    <div class="empty" id="chat-empty">在资料区选中文字提问，或在作答区提交申论<br>AI导师的回复会显示在这里</div>
+  </div>
+</div>
+
+<!-- 设置区 -->
+<div class="panel" id="panel-3">
+  <div class="setting-section">
+    <div class="setting-label">DeepSeek API Key</div>
+    <input class="setting-input" id="api-key-input" type="password" placeholder="sk-xxxxxxxxxxxxxxxx" />
+    <div class="setting-hint">
+      前往 <strong>platform.deepseek.com</strong> 免费注册获取<br>
+      充值1元可批改约100篇申论<br>
+      Key仅保存在本地浏览器，不会上传
+    </div>
+  </div>
+  <button class="btn-primary" onclick="saveKey()">保存</button>
+  <button class="btn-danger" onclick="clearKey()">清除Key</button>
+</div>
+
+<script>
+const SYSTEM_PROMPT = `你是申论私教导师，风格严格但温和。
+
+批改申论时：
+1. 每次只批改最突出的1-2个问题，绝不一次倾倒所有问题
+2. 先用一句话指出具体某句话的问题（引用原文）
+3. 用反问句引导用户思考如何改进
+4. 给出体制内文风的改写，格式：「原句：xxx → 改写：xxx」
+5. 一句话解释为何这样改更符合阅卷标准
+
+解释政策材料时：结合申论实战，说明这个概念/表述怎么用进文章，给出具体句式。
+
+语气：像坐在旁边的学长/学姐，不是冷冰冰的机器。`;
+
+let messages = [];
+let currentSelection = '';
+
+function switchTab(i) {
+  document.querySelectorAll('.tab').forEach((t, idx) => t.classList.toggle('active', idx === i));
+  document.querySelectorAll('.panel').forEach((p, idx) => p.classList.toggle('active', idx === i));
+  hidePopup();
+}
+
+function getKey() { return localStorage.getItem('deepseek_key') || ''; }
+
+function saveKey() {
+  const key = document.getElementById('api-key-input').value.trim();
+  if (!key.startsWith('sk-')) { alert('Key格式不对，应以 sk- 开头'); return; }
+  localStorage.setItem('deepseek_key', key);
+  alert('保存成功！');
+  switchTab(0);
+}
+
+function clearKey() {
+  localStorage.removeItem('deepseek_key');
+  document.getElementById('api-key-input').value = '';
+  alert('已清除');
+}
+
+// 加载文件
+function loadFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const content = e.target.result;
+    const box = document.getElementById('doc-content');
+    box.classList.remove('empty-state');
+    box.innerHTML = `<div class="doc-title">📄 ${file.name}</div><div id="doc-text">${escapeHtml(content)}</div>`;
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+
+// 划词弹窗逻辑
+function hidePopup() {
+  document.getElementById('selection-popup').style.display = 'none';
+}
+
+document.getElementById('doc-content').addEventListener('mouseup', showPopupOnSelect);
+document.getElementById('doc-content').addEventListener('touchend', () => setTimeout(showPopupOnSelect, 300));
+
+function showPopupOnSelect() {
+  setTimeout(() => {
+    const sel = window.getSelection();
+    const text = sel?.toString().trim();
+    if (!text || text.length < 4) { hidePopup(); return; }
+    // 锁定选中内容到弹窗，之后不再依赖全局变量或选区
+    const popup = document.getElementById('selection-popup');
+    popup.dataset.sel = text;
+    currentSelection = text;
+    popup.style.display = 'flex';
+    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    let top = rect.top - 56 + window.scrollY;
+    let left = rect.left + window.scrollX;
+    if (top < 8) top = rect.bottom + 8 + window.scrollY;
+    left = Math.max(8, Math.min(left, window.innerWidth - 260));
+    popup.style.top = top + 'px';
+    popup.style.left = left + 'px';
+  }, 10);
+}
+
+// 点击其他地方隐藏弹窗
+document.addEventListener('mousedown', e => {
+  if (!document.getElementById('selection-popup').contains(e.target) &&
+      !document.getElementById('custom-input-bar').contains(e.target)) {
+    hidePopup();
+    hideCustomInput();
+  }
+});
+
+const QUICK_QUESTIONS = [
+  '这段话的核心意思是什么？怎么用进申论？',
+  '这个概念在申论里怎么用？给我一个申论句式。',
+  '这段内容可以作为哪类申论题的论据？'
+];
+
+function askSelected(btnIndex) {
+  const sel = document.getElementById('selection-popup').dataset.sel;
+  if (!sel) return;
+  const q = QUICK_QUESTIONS[btnIndex];
+  hidePopup();
+  sendToAI(`【材料原文】\n"${sel}"\n\n${q}`, `📎 "${sel.slice(0,20)}${sel.length>20?'…':''}" → ${q}`);
+}
+
+function showCustomInput() {
+  currentSelection = document.getElementById('selection-popup').dataset.sel || '';
+  const bar = document.getElementById('custom-input-bar');
+  bar.style.display = 'flex';
+  document.getElementById('custom-question').focus();
+}
+
+function hideCustomInput() {
+  document.getElementById('custom-input-bar').style.display = 'none';
+  document.getElementById('custom-question').value = '';
+}
+
+function submitCustom() {
+  const q = document.getElementById('custom-question').value.trim();
+  if (!q || !currentSelection) return;
+  const full = `【材料原文】\n"${currentSelection}"\n\n${q}`;
+  hideCustomInput();
+  hidePopup();
+  sendToAI(full, `📎 "${currentSelection.slice(0,20)}…" → ${q}`);
+}
+
+// 批改申论
+function submitEssay() {
+  const essay = document.getElementById('essay').value.trim();
+  if (!essay) return;
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.textContent = '批改中...';
+  sendToAI(essay, null, () => {
+    btn.disabled = false;
+    btn.textContent = '继续提交修改版';
+  });
+}
+
+// 统一发送给AI
+async function sendToAI(content, displayText, onDone) {
+  const key = getKey();
+  if (!key) {
+    alert('请先在 ⚙️ 设置中填入 DeepSeek API Key');
+    switchTab(3);
+    return;
+  }
+
+  switchTab(2);
+  document.getElementById('chat-empty').style.display = 'none';
+
+  // 显示用户消息
+  addBubble('user', displayText || content);
+
+  messages.push({ role: 'user', content });
+
+  const typing = document.createElement('div');
+  typing.className = 'typing';
+  typing.textContent = 'AI导师正在思考...';
+  document.getElementById('chat').appendChild(typing);
+  document.getElementById('chat').scrollTop = 99999;
+
+  try {
+    const res = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages]
+      })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err?.error?.message || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    const reply = data.choices[0].message.content;
+    messages.push({ role: 'assistant', content: reply });
+    typing.remove();
+    addBubble('assistant', reply);
+  } catch (e) {
+    typing.remove();
+    addBubble('assistant', `出错了：${e.message}\n请检查 API Key 和网络。`);
+  } finally {
+    onDone?.();
+  }
+}
+
+function addBubble(role, text) {
+  const chat = document.getElementById('chat');
+  const div = document.createElement('div');
+  div.className = `bubble ${role}`;
+  div.innerHTML = `<div class="role-label">${role === 'user' ? '你' : '🎓 AI导师'}</div><span class="bubble-text">${escapeHtml(text)}</span>`;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+window.onload = () => {
+  const k = getKey();
+  if (k) document.getElementById('api-key-input').value = k;
+};
+</script>
+</body>
+</html>
