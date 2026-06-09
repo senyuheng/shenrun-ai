@@ -2,339 +2,1418 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>申论AI导师 - 测试版</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>申论AI导师</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://unpkg.com/mammoth@1.8.0/mammoth.browser.min.js"></script>
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: -apple-system, sans-serif; background: #f7f8fa; height: 100vh; display: flex; flex-direction: column; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #f0f2f5; color: #1c1c1e; }
 
-.tabs { display: flex; background: #fff; border-bottom: 1px solid #eee; flex-shrink: 0; }
-.tab { flex: 1; text-align: center; padding: 14px 0; font-size: 15px; color: #999; cursor: pointer; }
-.tab.active { color: #007aff; border-bottom: 3px solid #007aff; font-weight: bold; }
-.tab-setting { padding: 14px 16px; font-size: 20px; cursor: pointer; }
+/* ── Layout ─────────────────────────────────────────── */
+#main-view { display: flex; flex-direction: column; height: 100vh; }
 
-.panel { flex: 1; overflow: hidden; display: none; flex-direction: column; padding: 16px; }
-.panel.active { display: flex; }
+#app-header {
+  display: flex; align-items: center; justify-content: space-between;
+  height: 50px; padding: 0 20px; flex-shrink: 0;
+  background: #fff; border-bottom: 1px solid #e5e7eb;
+}
+.header-title { font-size: 16px; font-weight: 700; color: #1c1c1e; letter-spacing: 0.3px; }
+.header-actions { display: flex; gap: 8px; }
+.header-btn {
+  padding: 6px 14px; border-radius: 8px; border: 1px solid #e5e7eb;
+  background: #fff; font-size: 13px; cursor: pointer; color: #374151;
+  transition: background .15s;
+}
+.header-btn:hover { background: #f5f5f5; }
 
-/* 资料区 */
-.upload-btn { border: 2px dashed #ccc; border-radius: 10px; padding: 20px; text-align: center; color: #666; cursor: pointer; margin-bottom: 12px; flex-shrink: 0; }
-.doc-content { flex: 1; overflow-y: auto; background: #fff; border-radius: 10px; padding: 16px; font-size: 15px; line-height: 1.9; color: #333; user-select: text; position: relative; }
-.doc-content.empty-state { color: #bbb; font-size: 14px; display: flex; align-items: center; justify-content: center; text-align: center; }
-.doc-title { font-weight: bold; font-size: 16px; margin-bottom: 12px; color: #111; }
+#columns {
+  display: grid;
+  grid-template-columns: 220px 1fr 300px;
+  flex: 1; overflow: hidden;
+}
 
-/* 划词弹窗 */
-#selection-popup {
-  position: fixed;
-  background: #1c1c1e;
-  border-radius: 10px;
-  padding: 6px 4px;
-  display: none;
-  z-index: 999;
-  flex-direction: row;
-  gap: 4px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+/* ── Left Panel ─────────────────────────────────────── */
+#panel-left {
+  background: #fff; border-right: 1px solid #e5e7eb;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.panel-title {
+  padding: 14px 16px 8px; font-size: 11px; font-weight: 700;
+  color: #9ca3af; text-transform: uppercase; letter-spacing: 0.8px; flex-shrink: 0;
+}
+.upload-zone {
+  margin: 0 12px 10px; border: 2px dashed #d1d5db; border-radius: 10px;
+  padding: 14px 8px; text-align: center; cursor: pointer; flex-shrink: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  font-size: 13px; color: #374151; transition: border-color .15s, background .15s;
+}
+.upload-zone:hover { border-color: #3b82f6; background: #eff6ff; }
+.upload-sub { font-size: 11px; color: #9ca3af; }
+.material-list { flex: 1; overflow-y: auto; padding: 0 8px 8px; }
+.list-empty { text-align: center; color: #9ca3af; font-size: 12px; padding: 16px 0; }
+.material-item {
+  display: flex; align-items: center; gap: 7px; padding: 8px 10px;
+  border-radius: 8px; cursor: pointer; font-size: 13px; color: #374151;
+  margin-bottom: 2px; transition: background .12s;
+}
+.material-item:hover { background: #f3f4f6; }
+.material-item.active { background: #eff6ff; color: #1d4ed8; }
+.material-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.material-del {
+  flex-shrink: 0; background: none; border: none; color: #9ca3af;
+  font-size: 14px; cursor: pointer; padding: 2px 4px; border-radius: 4px;
+  opacity: 0; transition: opacity .1s;
+}
+.material-item:hover .material-del { opacity: 1; }
+.material-del:hover { background: #fee2e2; color: #ef4444; }
+
+/* ── Center Panel ───────────────────────────────────── */
+#panel-center {
+  background: #f9fafb; display: flex; flex-direction: column; overflow: hidden; position: relative;
+}
+.center-placeholder {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px; padding: 40px;
+}
+.placeholder-icon { font-size: 44px; }
+.placeholder-text { color: #9ca3af; font-size: 14px; text-align: center; line-height: 1.8; }
+#center-content { flex: 1; overflow-y: auto; padding: 20px 24px; }
+.material-viewer-title {
+  font-size: 15px; font-weight: 700; color: #111; margin-bottom: 14px;
+  padding-bottom: 12px; border-bottom: 1px solid #e5e7eb;
+}
+.material-viewer-body {
+  font-size: 15px; line-height: 1.9; color: #374151;
+  white-space: pre-wrap; word-break: break-all; user-select: text;
+}
+
+/* Score card */
+.score-card {
+  background: #fff; border-radius: 14px; padding: 20px 24px;
+  margin-bottom: 16px; text-align: center;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+.score-number { font-size: 60px; font-weight: 800; line-height: 1; margin-bottom: 4px; }
+.score-label { font-size: 14px; color: #6b7280; }
+.c-red    { color: #ef4444; }
+.c-orange { color: #f97316; }
+.c-blue   { color: #3b82f6; }
+.c-green  { color: #22c55e; }
+
+/* Review sections */
+.review-section {
+  background: #fff; border-radius: 12px; padding: 14px 16px;
+  margin-bottom: 10px;
+}
+.review-section-title {
+  font-size: 11px; font-weight: 700; color: #9ca3af;
+  text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;
+}
+.review-section-body {
+  font-size: 14px; line-height: 1.85; color: #374151; white-space: pre-wrap;
+}
+.review-actions { display: flex; gap: 10px; margin-top: 18px; padding-top: 14px; border-top: 1px solid #e5e7eb; }
+.btn-revise {
+  flex: 1; background: #2563eb; color: #fff; border: none;
+  border-radius: 10px; padding: 11px; font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: background .15s;
+}
+.btn-revise:hover { background: #1d4ed8; }
+.btn-clear-essay {
+  flex: 1; background: #fff; color: #6b7280; border: 1px solid #e5e7eb;
+  border-radius: 10px; padding: 11px; font-size: 14px; cursor: pointer;
+  transition: background .15s;
+}
+.btn-clear-essay:hover { background: #f3f4f6; }
+
+/* Selection popup */
+#sel-popup {
+  position: fixed; display: none; z-index: 500;
+  background: #1c1c1e; border-radius: 10px; padding: 5px;
+  flex-direction: row; gap: 2px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.3);
 }
 .pop-btn {
-  color: #fff;
-  font-size: 13px;
-  padding: 6px 12px;
-  border-radius: 7px;
-  cursor: pointer;
-  white-space: nowrap;
-  border: none;
-  background: transparent;
+  color: #fff; background: transparent; border: none;
+  font-size: 12px; padding: 6px 11px; border-radius: 7px;
+  cursor: pointer; white-space: nowrap; transition: background .12s;
 }
 .pop-btn:hover { background: #3a3a3c; }
 
-/* 作答区 */
-textarea { flex: 1; border: 1px solid #eee; border-radius: 10px; padding: 14px; font-size: 16px; line-height: 1.8; resize: none; background: #fff; margin-bottom: 12px; }
-.btn-primary { background: #007aff; color: #fff; border: none; border-radius: 10px; padding: 14px; font-size: 16px; cursor: pointer; width: 100%; flex-shrink: 0; }
-.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+/* Loading */
+.loading-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 200px; gap: 14px; }
+.loading-dots { display: inline-flex; gap: 5px; align-items: center; }
+.loading-dots span { width: 7px; height: 7px; border-radius: 50%; background: #9ca3af; animation: ldot 1.2s infinite; }
+.loading-dots span:nth-child(2) { animation-delay: .2s; }
+.loading-dots span:nth-child(3) { animation-delay: .4s; }
+@keyframes ldot { 0%,80%,100%{transform:scale(.6);opacity:.4} 40%{transform:scale(1);opacity:1} }
+.loading-label { font-size: 13px; color: #9ca3af; }
+.error-msg { color: #ef4444; background: #fef2f2; border-radius: 10px; padding: 14px 16px; font-size: 14px; line-height: 1.7; }
 
-/* 对话区 */
-.chat { flex: 1; overflow-y: auto; }
-.bubble { margin-bottom: 20px; }
-.role-label { font-size: 12px; color: #999; margin-bottom: 4px; }
-.bubble-text { display: block; border-radius: 10px; padding: 12px 14px; font-size: 15px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
-.bubble.user .bubble-text { background: #e8f4ff; }
-.bubble.assistant .bubble-text { background: #fff; border-left: 4px solid #007aff; }
-.bubble.context-msg .bubble-text { background: #f0f0f0; border-left: 4px solid #ccc; font-size: 13px; color: #666; }
-.typing { color: #999; font-size: 14px; padding: 8px 0; }
-.empty { text-align: center; color: #bbb; font-size: 14px; margin-top: 40px; line-height: 1.8; }
+/* Inline AI answer card (text selection) */
+.sel-answer-card { background: #fff; border-radius: 10px; padding: 12px 14px; margin-top: 12px; border-left: 3px solid #3b82f6; }
+.sel-answer-question { font-size: 11px; color: #9ca3af; margin-bottom: 6px; }
+.sel-answer-body { font-size: 14px; line-height: 1.8; color: #374151; white-space: pre-wrap; }
 
-/* 设置区 */
-.setting-section { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
-.setting-label { font-size: 14px; font-weight: bold; color: #333; margin-bottom: 10px; }
-.setting-input { border: 1px solid #eee; border-radius: 8px; padding: 10px; font-size: 14px; width: 100%; }
-.setting-hint { margin-top: 8px; font-size: 12px; color: #999; line-height: 1.6; }
-.btn-danger { background: #fff; color: #ff3b30; border: 1px solid #ff3b30; border-radius: 10px; padding: 12px; font-size: 15px; cursor: pointer; width: 100%; margin-top: 8px; }
+/* ── Right Panel ─────────────────────────────────────── */
+#panel-right {
+  background: #fff; border-left: 1px solid #e5e7eb;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.feature-tabs { display: flex; border-bottom: 1px solid #e5e7eb; flex-shrink: 0; }
+.feature-tab {
+  flex: 1; padding: 13px 0; text-align: center; font-size: 13px; font-weight: 500;
+  color: #6b7280; background: none; border: none; border-bottom: 2px solid transparent;
+  margin-bottom: -1px; cursor: pointer; transition: color .15s;
+}
+.feature-tab.active { color: #2563eb; border-bottom-color: #2563eb; font-weight: 700; }
+.feature-tab:hover:not(.active) { color: #374151; }
+.tab-content {
+  flex: 1; overflow-y: auto; padding: 14px 14px 20px;
+  display: flex; flex-direction: column; gap: 9px;
+}
+.section-label { font-size: 11px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px; }
+.upload-file-btn {
+  display: flex; align-items: center; gap: 6px; padding: 8px 12px;
+  border-radius: 8px; background: #f3f4f6; border: 1px solid #e5e7eb;
+  font-size: 13px; color: #374151; cursor: pointer; transition: background .12s;
+}
+.upload-file-btn:hover { background: #e9ecf0; }
+#essay-textarea {
+  flex: 1; min-height: 180px; border: 1px solid #e5e7eb; border-radius: 10px;
+  padding: 11px; font-size: 14px; line-height: 1.8; resize: vertical;
+  font-family: inherit; transition: border-color .15s;
+}
+#essay-textarea:focus { outline: none; border-color: #3b82f6; }
+.word-count { font-size: 11px; color: #9ca3af; text-align: right; }
+.file-indicator {
+  font-size: 12px; color: #374151; padding: 7px 10px;
+  background: #f3f4f6; border-radius: 7px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.upload-zone-sm {
+  margin: 0; padding: 16px 8px; font-size: 13px;
+}
+
+/* Buttons */
+.btn-primary {
+  background: #2563eb; color: #fff; border: none; border-radius: 10px;
+  padding: 11px; font-size: 14px; font-weight: 600; cursor: pointer;
+  width: 100%; transition: background .15s; flex-shrink: 0;
+}
+.btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+.btn-primary:disabled { opacity: .4; cursor: not-allowed; }
+.btn-ghost {
+  background: none; border: 1px solid #e5e7eb; color: #374151;
+  border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer;
+  transition: background .15s;
+}
+.btn-ghost:hover { background: #f3f4f6; }
+.btn-danger {
+  background: #fff; color: #ef4444; border: 1px solid #ef4444;
+  border-radius: 10px; padding: 10px; font-size: 13px; cursor: pointer;
+  width: 100%; transition: background .15s;
+}
+.btn-danger:hover { background: #fef2f2; }
+
+/* ── Revision View ───────────────────────────────────── */
+#revision-view {
+  position: fixed; inset: 0; display: none; flex-direction: column;
+  background: #fff; z-index: 100;
+}
+#revision-header {
+  display: flex; align-items: center; justify-content: space-between;
+  height: 50px; padding: 0 20px; background: #fff;
+  border-bottom: 1px solid #e5e7eb; flex-shrink: 0; gap: 12px;
+}
+.revision-title { font-size: 15px; font-weight: 700; flex: 1; }
+#revision-textarea {
+  flex: 1; border: none; padding: 22px 28px; font-size: 16px; line-height: 2;
+  resize: none; font-family: inherit; color: #1c1c1e;
+}
+#revision-textarea:focus { outline: none; }
+
+/* Floating feedback window */
+#float-win {
+  position: absolute; right: 28px; bottom: 28px;
+  width: 360px; max-height: 460px; display: flex; flex-direction: column;
+  background: #fff; border-radius: 14px; overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,.18); border: 1px solid #e5e7eb; z-index: 110;
+}
+#float-handle {
+  background: #1c1c1e; color: #fff; padding: 10px 14px; cursor: grab;
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 13px; font-weight: 600; user-select: none; flex-shrink: 0;
+}
+#float-handle:active { cursor: grabbing; }
+#float-toggle {
+  background: none; border: none; color: rgba(255,255,255,.7);
+  font-size: 17px; cursor: pointer; padding: 0 4px; line-height: 1;
+}
+#float-toggle:hover { color: #fff; }
+#float-body { flex: 1; overflow-y: auto; padding: 13px; font-size: 13px; line-height: 1.85; color: #374151; white-space: pre-wrap; }
+#float-win.minimized #float-body { display: none; }
+
+/* ── Overlays ────────────────────────────────────────── */
+.overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45);
+  backdrop-filter: blur(2px); display: none; align-items: center;
+  justify-content: center; z-index: 200;
+}
+.overlay.open { display: flex; }
+.overlay-card {
+  background: #fff; border-radius: 16px; padding: 24px;
+  width: 460px; max-height: 80vh; overflow-y: auto;
+  box-shadow: 0 24px 48px rgba(0,0,0,.2);
+}
+.overlay-card-wide { width: 680px; }
+.overlay-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 20px; font-size: 16px; font-weight: 700;
+}
+.btn-close {
+  background: #f3f4f6; border: none; width: 28px; height: 28px;
+  border-radius: 50%; cursor: pointer; font-size: 14px; color: #6b7280;
+  display: flex; align-items: center; justify-content: center; transition: background .12s;
+}
+.btn-close:hover { background: #e5e7eb; }
+.setting-group { margin-bottom: 18px; }
+.setting-label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 7px; }
+.setting-input {
+  width: 100%; padding: 9px 12px; border: 1px solid #e5e7eb; border-radius: 8px;
+  font-size: 14px; font-family: inherit; transition: border-color .15s;
+}
+.setting-input:focus { outline: none; border-color: #3b82f6; }
+.setting-hint { margin-top: 7px; font-size: 11px; color: #9ca3af; line-height: 1.6; }
+.overlay-footer { display: flex; flex-direction: column; gap: 8px; }
+
+/* History */
+.history-label { font-size: 11px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px; margin: 16px 0 10px; }
+.history-label:first-child { margin-top: 0; }
+.error-chip {
+  display: inline-flex; align-items: center; gap: 5px; margin: 0 5px 6px 0;
+  background: #fef9c3; border: 1px solid #fde047; border-radius: 20px;
+  padding: 3px 10px; font-size: 12px; color: #854d0e;
+}
+.error-chip-n {
+  background: #f97316; color: #fff; border-radius: 10px;
+  padding: 1px 6px; font-size: 10px; font-weight: 700;
+}
+.session-card {
+  border: 1px solid #e5e7eb; border-radius: 10px;
+  padding: 11px 13px; margin-bottom: 7px;
+}
+.session-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.session-score { font-size: 22px; font-weight: 800; }
+.session-date { font-size: 11px; color: #9ca3af; }
+.session-type-tag {
+  font-size: 11px; font-weight: 700; padding: 2px 8px;
+  background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0;
+  border-radius: 6px;
+}
+.session-preview { font-size: 12px; color: #6b7280; line-height: 1.6; }
+.session-actions { margin-top: 8px; display: flex; gap: 8px; }
+.btn-restore {
+  font-size: 12px; padding: 4px 12px; border-radius: 6px;
+  background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe;
+  cursor: pointer; transition: background .12s;
+}
+.btn-restore:hover { background: #dbeafe; }
+.history-empty { color: #9ca3af; font-size: 13px; }
+
+/* ── Toast ───────────────────────────────────────────── */
+#toast {
+  position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(10px);
+  background: #1c1c1e; color: #fff; padding: 9px 18px; border-radius: 10px;
+  font-size: 13px; z-index: 9999; opacity: 0; transition: opacity .25s, transform .25s;
+  pointer-events: none; white-space: nowrap;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
 </style>
 </head>
 <body>
 
-<div class="tabs">
-  <div class="tab active" onclick="switchTab(0)">参考资料</div>
-  <div class="tab" onclick="switchTab(1)">申论作答</div>
-  <div class="tab" onclick="switchTab(2)">问导师</div>
-  <div class="tab-setting" onclick="switchTab(3)">⚙️</div>
-</div>
+<!-- ═══════════════════════════════════════════════════
+     MAIN VIEW — 3-column layout
+═══════════════════════════════════════════════════ -->
+<div id="main-view">
+  <header id="app-header">
+    <span class="header-title">🎓 申论AI导师</span>
+    <div class="header-actions">
+      <button class="header-btn" id="btn-history">历史 / 错题本</button>
+      <button class="header-btn" id="btn-settings">⚙ 设置</button>
+    </div>
+  </header>
 
-<!-- 划词弹窗 -->
-<div id="selection-popup">
-  <button class="pop-btn" onclick="askSelected(0)">📖 解释</button>
-  <button class="pop-btn" onclick="askSelected(1)">✍️ 申论用法</button>
-  <button class="pop-btn" onclick="askSelected(2)">🎯 用作论据</button>
-  <button class="pop-btn" onclick="showCustomInput()">💬 自定义问</button>
-</div>
+  <div id="columns">
+    <!-- Left: material library -->
+    <aside id="panel-left">
+      <div class="panel-title">参考材料库</div>
+      <label class="upload-zone" for="material-input">
+        <span>📁 上传参考材料</span>
+        <span class="upload-sub">TXT · PDF · DOCX</span>
+      </label>
+      <input type="file" id="material-input" accept=".txt,.pdf,.docx" multiple style="display:none">
+      <div id="material-list" class="material-list">
+        <div class="list-empty">暂无材料</div>
+      </div>
+    </aside>
 
-<!-- 自定义提问输入框 -->
-<div id="custom-input-bar" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#fff;padding:12px;border-top:1px solid #eee;z-index:1000;display:none;flex-direction:row;gap:8px;">
-  <input id="custom-question" placeholder="输入你的问题..." style="flex:1;border:1px solid #eee;border-radius:8px;padding:10px;font-size:15px;" />
-  <button onclick="submitCustom()" style="background:#007aff;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:15px;cursor:pointer;">问</button>
-  <button onclick="hideCustomInput()" style="background:#f0f0f0;color:#666;border:none;border-radius:8px;padding:10px 12px;font-size:15px;cursor:pointer;">✕</button>
-</div>
+    <!-- Center: content viewer -->
+    <section id="panel-center">
+      <div id="center-placeholder" class="center-placeholder">
+        <div class="placeholder-icon">📖</div>
+        <div class="placeholder-text">从左侧上传并选择材料预览<br>或提交申论后查看批改结果</div>
+      </div>
+      <div id="center-content" style="display:none">
+        <div id="center-inner"></div>
+      </div>
+    </section>
 
-<!-- 资料区 -->
-<div class="panel active" id="panel-0">
-  <div class="upload-btn" onclick="document.getElementById('file-input').click()">📄 点击上传政策文件（.txt）</div>
-  <input type="file" id="file-input" accept=".txt" style="display:none" onchange="loadFile(this)" />
-  <div class="doc-content empty-state" id="doc-content">
-    <span>上传 .txt 格式的政策文件<br>（如《政府工作报告》《半月谈》）<br><br>选中任意文字可快速询问AI导师</span>
+    <!-- Right: feature panel -->
+    <aside id="panel-right">
+      <div class="feature-tabs">
+        <button class="feature-tab active" data-tab="essay">申论指导</button>
+        <button class="feature-tab" data-tab="news">时政总结</button>
+      </div>
+
+      <!-- Essay feature -->
+      <div id="tab-essay" class="tab-content">
+        <div class="section-label">作文内容</div>
+        <label class="upload-file-btn" for="essay-input">📎 上传作文文件（TXT / PDF / DOCX）</label>
+        <input type="file" id="essay-input" accept=".txt,.pdf,.docx" style="display:none">
+        <textarea id="essay-textarea" placeholder="或在此直接粘贴 / 输入申论内容…"></textarea>
+        <div id="essay-wc" class="word-count">0 字</div>
+        <button id="btn-submit-essay" class="btn-primary" disabled>提交批改</button>
+      </div>
+
+      <!-- News feature -->
+      <div id="tab-news" class="tab-content" style="display:none">
+        <div class="section-label">时政材料</div>
+        <label class="upload-zone upload-zone-sm" for="news-input">
+          <span>📰 上传时政材料</span>
+          <span class="upload-sub">TXT · PDF · DOCX</span>
+        </label>
+        <input type="file" id="news-input" accept=".txt,.pdf,.docx" style="display:none">
+        <div id="news-indicator" class="file-indicator" style="display:none"></div>
+        <button id="btn-submit-news" class="btn-primary" disabled>总结提炼</button>
+      </div>
+    </aside>
   </div>
 </div>
 
-<!-- 作答区 -->
-<div class="panel" id="panel-1">
-  <textarea id="essay" placeholder="在此输入你的申论作答...&#10;&#10;提示：先写一段，AI导师会用苏格拉底式方法引导你改进。"></textarea>
-  <button class="btn-primary" id="submit-btn" onclick="submitEssay()">提交给AI导师批改</button>
+<!-- Text selection popup -->
+<div id="sel-popup">
+  <button class="pop-btn" id="pop-explain">📖 解释</button>
+  <button class="pop-btn" id="pop-usage">✍️ 申论用法</button>
+  <button class="pop-btn" id="pop-argument">🎯 用作论据</button>
 </div>
 
-<!-- 对话区 -->
-<div class="panel" id="panel-2">
-  <div class="chat" id="chat">
-    <div class="empty" id="chat-empty">在资料区选中文字提问，或在作答区提交申论<br>AI导师的回复会显示在这里</div>
+<!-- ═══════════════════════════════════════════════════
+     REVISION VIEW — full-screen editing mode
+═══════════════════════════════════════════════════ -->
+<div id="revision-view">
+  <div id="revision-header">
+    <span class="revision-title">✏️ 修改作文</span>
+    <button id="btn-resubmit-revision" class="btn-primary" style="width:auto;padding:8px 18px">提交修改版</button>
+    <button id="btn-exit-revision" class="btn-ghost">← 返回</button>
+  </div>
+  <textarea id="revision-textarea" placeholder="在此修改你的申论…"></textarea>
+
+  <!-- Draggable feedback window -->
+  <div id="float-win">
+    <div id="float-handle">
+      <span>🎓 AI批改意见</span>
+      <button id="float-toggle" title="最小化">─</button>
+    </div>
+    <div id="float-body"></div>
   </div>
 </div>
 
-<!-- 设置区 -->
-<div class="panel" id="panel-3">
-  <div class="setting-section">
-    <div class="setting-label">DeepSeek API Key</div>
-    <input class="setting-input" id="api-key-input" type="password" placeholder="sk-xxxxxxxxxxxxxxxx" />
-    <div class="setting-hint">
-      前往 <strong>platform.deepseek.com</strong> 免费注册获取<br>
-      充值1元可批改约100篇申论<br>
-      Key仅保存在本地浏览器，不会上传
+<!-- ═══════════════════════════════════════════════════
+     SETTINGS OVERLAY
+═══════════════════════════════════════════════════ -->
+<div class="overlay" id="settings-overlay">
+  <div class="overlay-card">
+    <div class="overlay-header">
+      <span>设置</span>
+      <button class="btn-close" id="btn-close-settings">✕</button>
+    </div>
+    <div class="setting-group">
+      <label class="setting-label" for="settings-key">DeepSeek API Key</label>
+      <input id="settings-key" type="password" class="setting-input" placeholder="sk-xxxxxxxxxxxxxxxx">
+      <p class="setting-hint">前往 platform.deepseek.com 注册获取 · Key 仅保存在本地浏览器，不会上传到任何服务器</p>
+    </div>
+    <div class="overlay-footer">
+      <button id="btn-save-key" class="btn-primary">保存</button>
+      <button id="btn-clear-key" class="btn-danger">清除 API Key</button>
+      <button id="btn-clear-memory" class="btn-danger" style="margin-top:4px">清除全部学习记录</button>
     </div>
   </div>
-  <button class="btn-primary" onclick="saveKey()">保存</button>
-  <button class="btn-danger" onclick="clearKey()">清除Key</button>
 </div>
 
+<!-- ═══════════════════════════════════════════════════
+     HISTORY OVERLAY
+═══════════════════════════════════════════════════ -->
+<div class="overlay" id="history-overlay">
+  <div class="overlay-card overlay-card-wide">
+    <div class="overlay-header">
+      <span>学习历史 &amp; 错题本</span>
+      <button class="btn-close" id="btn-close-history">✕</button>
+    </div>
+    <div id="history-content"></div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
 <script>
-const SYSTEM_PROMPT = `你是申论私教导师，风格严格但温和。
+'use strict';
 
-批改申论时：
-1. 每次只批改最突出的1-2个问题，绝不一次倾倒所有问题
-2. 先用一句话指出具体某句话的问题（引用原文）
-3. 用反问句引导用户思考如何改进
-4. 给出体制内文风的改写，格式：「原句：xxx → 改写：xxx」
-5. 一句话解释为何这样改更符合阅卷标准
+/* ═══════════════════════════════════════════════════════════════
+   StorageService — localStorage 封装
+═══════════════════════════════════════════════════════════════ */
+class StorageService {
+  static #K_API = 'shenrun_api';
+  static #K_MEM = 'shenrun_mem';
 
-解释政策材料时：结合申论实战，说明这个概念/表述怎么用进文章，给出具体句式。
+  static getApiKey()       { return this.#read(this.#K_API, ''); }
+  static setApiKey(v)      { this.#write(this.#K_API, v); }
+  static clearApiKey()     { localStorage.removeItem(this.#K_API); }
 
-语气：像坐在旁边的学长/学姐，不是冷冰冰的机器。`;
+  static getMemory()       { return this.#readJSON(this.#K_MEM, { sessions: [], errFreq: {} }); }
+  static saveMemory(data)  { this.#writeJSON(this.#K_MEM, data); }
+  static clearMemory()     { localStorage.removeItem(this.#K_MEM); }
 
-let messages = [];
-let currentSelection = '';
-
-function switchTab(i) {
-  document.querySelectorAll('.tab').forEach((t, idx) => t.classList.toggle('active', idx === i));
-  document.querySelectorAll('.panel').forEach((p, idx) => p.classList.toggle('active', idx === i));
-  hidePopup();
+  static #read(k, d)       { try { return localStorage.getItem(k) ?? d; } catch { return d; } }
+  static #write(k, v)      { try { localStorage.setItem(k, v); } catch {} }
+  static #readJSON(k, d)   { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } }
+  static #writeJSON(k, v)  { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 }
 
-function getKey() { return localStorage.getItem('deepseek_key') || ''; }
+/* ═══════════════════════════════════════════════════════════════
+   MemoryService — 学习记录 & 错题本
+═══════════════════════════════════════════════════════════════ */
+class MemoryService {
+  #data;
 
-function saveKey() {
-  const key = document.getElementById('api-key-input').value.trim();
-  if (!key.startsWith('sk-')) { alert('Key格式不对，应以 sk- 开头'); return; }
-  localStorage.setItem('deepseek_key', key);
-  alert('保存成功！');
-  switchTab(0);
-}
-
-function clearKey() {
-  localStorage.removeItem('deepseek_key');
-  document.getElementById('api-key-input').value = '';
-  alert('已清除');
-}
-
-// 加载文件
-function loadFile(input) {
-  const file = input.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    const content = e.target.result;
-    const box = document.getElementById('doc-content');
-    box.classList.remove('empty-state');
-    box.innerHTML = `<div class="doc-title">📄 ${file.name}</div><div id="doc-text">${escapeHtml(content)}</div>`;
-  };
-  reader.readAsText(file, 'UTF-8');
-}
-
-function escapeHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
-}
-
-// 划词弹窗逻辑
-function hidePopup() {
-  document.getElementById('selection-popup').style.display = 'none';
-}
-
-document.getElementById('doc-content').addEventListener('mouseup', showPopupOnSelect);
-document.getElementById('doc-content').addEventListener('touchend', () => setTimeout(showPopupOnSelect, 300));
-
-function showPopupOnSelect() {
-  setTimeout(() => {
-    const sel = window.getSelection();
-    const text = sel?.toString().trim();
-    if (!text || text.length < 4) { hidePopup(); return; }
-    // 锁定选中内容到弹窗，之后不再依赖全局变量或选区
-    const popup = document.getElementById('selection-popup');
-    popup.dataset.sel = text;
-    currentSelection = text;
-    popup.style.display = 'flex';
-    const rect = sel.getRangeAt(0).getBoundingClientRect();
-    let top = rect.top - 56 + window.scrollY;
-    let left = rect.left + window.scrollX;
-    if (top < 8) top = rect.bottom + 8 + window.scrollY;
-    left = Math.max(8, Math.min(left, window.innerWidth - 260));
-    popup.style.top = top + 'px';
-    popup.style.left = left + 'px';
-  }, 10);
-}
-
-// 点击其他地方隐藏弹窗
-document.addEventListener('mousedown', e => {
-  if (!document.getElementById('selection-popup').contains(e.target) &&
-      !document.getElementById('custom-input-bar').contains(e.target)) {
-    hidePopup();
-    hideCustomInput();
-  }
-});
-
-const QUICK_QUESTIONS = [
-  '这段话的核心意思是什么？怎么用进申论？',
-  '这个概念在申论里怎么用？给我一个申论句式。',
-  '这段内容可以作为哪类申论题的论据？'
-];
-
-function askSelected(btnIndex) {
-  const sel = document.getElementById('selection-popup').dataset.sel;
-  if (!sel) return;
-  const q = QUICK_QUESTIONS[btnIndex];
-  hidePopup();
-  sendToAI(`【材料原文】\n"${sel}"\n\n${q}`, `📎 "${sel.slice(0,20)}${sel.length>20?'…':''}" → ${q}`);
-}
-
-function showCustomInput() {
-  currentSelection = document.getElementById('selection-popup').dataset.sel || '';
-  const bar = document.getElementById('custom-input-bar');
-  bar.style.display = 'flex';
-  document.getElementById('custom-question').focus();
-}
-
-function hideCustomInput() {
-  document.getElementById('custom-input-bar').style.display = 'none';
-  document.getElementById('custom-question').value = '';
-}
-
-function submitCustom() {
-  const q = document.getElementById('custom-question').value.trim();
-  if (!q || !currentSelection) return;
-  const full = `【材料原文】\n"${currentSelection}"\n\n${q}`;
-  hideCustomInput();
-  hidePopup();
-  sendToAI(full, `📎 "${currentSelection.slice(0,20)}…" → ${q}`);
-}
-
-// 批改申论
-function submitEssay() {
-  const essay = document.getElementById('essay').value.trim();
-  if (!essay) return;
-  const btn = document.getElementById('submit-btn');
-  btn.disabled = true;
-  btn.textContent = '批改中...';
-  sendToAI(essay, null, () => {
-    btn.disabled = false;
-    btn.textContent = '继续提交修改版';
-  });
-}
-
-// 统一发送给AI
-async function sendToAI(content, displayText, onDone) {
-  const key = getKey();
-  if (!key) {
-    alert('请先在 ⚙️ 设置中填入 DeepSeek API Key');
-    switchTab(3);
-    return;
+  constructor() {
+    this.#data = StorageService.getMemory();
   }
 
-  switchTab(2);
-  document.getElementById('chat-empty').style.display = 'none';
+  addSession({ essay, rawReview, score, errors = [] }) {
+    this.#data.sessions.unshift({
+      id:      Date.now().toString(36),
+      ts:      Date.now(),
+      type:    'essay',
+      preview: essay.slice(0, 120),
+      essay,
+      score:   score ?? null,
+      rawReview,
+    });
+    if (this.#data.sessions.length > 30) this.#data.sessions.length = 30;
+    for (const e of errors) {
+      this.#data.errFreq[e] = (this.#data.errFreq[e] || 0) + 1;
+    }
+    StorageService.saveMemory(this.#data);
+  }
 
-  // 显示用户消息
-  addBubble('user', displayText || content);
+  addNewsSummary({ fileName, summary }) {
+    this.#data.sessions.unshift({
+      id:      Date.now().toString(36),
+      ts:      Date.now(),
+      type:    'news',
+      preview: fileName,
+      summary,
+    });
+    if (this.#data.sessions.length > 30) this.#data.sessions.length = 30;
+    StorageService.saveMemory(this.#data);
+  }
 
-  messages.push({ role: 'user', content });
+  // Returns a prompt snippet with the student's history for the AI to use
+  buildContextPrompt() {
+    const { sessions, errFreq } = this.#data;
+    if (!sessions.length) return '';
 
-  const typing = document.createElement('div');
-  typing.className = 'typing';
-  typing.textContent = 'AI导师正在思考...';
-  document.getElementById('chat').appendChild(typing);
-  document.getElementById('chat').scrollTop = 99999;
+    const avg = Math.round(sessions.reduce((s, r) => s + (r.score || 0), 0) / sessions.length);
+    const topErrors = Object.entries(errFreq)
+      .sort((a, b) => b[1] - a[1]).slice(0, 6)
+      .map(([e, n]) => `- ${e}（已出现 ${n} 次）`).join('\n');
 
-  try {
-    const res = await fetch('https://api.deepseek.com/chat/completions', {
-      method: 'POST',
+    const lines = [
+      '【该学生历史学习记录——请据此有针对性地批改】',
+      `共提交批改 ${sessions.length} 次，近期平均分约 ${avg} 分`,
+    ];
+    if (topErrors) lines.push(`以下高频错误请在本次批改中重点提醒：\n${topErrors}`);
+    return lines.join('\n');
+  }
+
+  getSessions()  { return [...this.#data.sessions]; }
+  getTopErrors() {
+    return Object.entries(this.#data.errFreq).sort((a, b) => b[1] - a[1]).slice(0, 15);
+  }
+  clear()        { this.#data = { sessions: [], errFreq: {} }; StorageService.clearMemory(); }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FileParser — TXT / PDF / DOCX → 纯文本
+═══════════════════════════════════════════════════════════════ */
+class FileParser {
+  static async parse(file) {
+    const ext = file.name.split('.').pop().toLowerCase();
+    const map = { txt: this.#txt, pdf: this.#pdf, docx: this.#docx };
+    const fn  = map[ext];
+    if (!fn) throw new Error(`不支持 .${ext} 格式，请使用 TXT、PDF 或 DOCX`);
+    return fn.call(this, file);
+  }
+
+  static #txt(file) {
+    return new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload  = e => res(e.target.result);
+      r.onerror = () => rej(new Error('TXT 文件读取失败'));
+      r.readAsText(file, 'UTF-8');
+    });
+  }
+
+  static async #pdf(file) {
+    if (!window.pdfjsLib) throw new Error('PDF 解析库未加载，请检查网络后刷新');
+    const ab  = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+    const pageTexts = [];
+
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page    = await pdf.getPage(i);
+      const content = await page.getTextContent();
+
+      // Step 1: bucket items into visual lines by y-position (4pt tolerance)
+      const lineMap = new Map();
+      for (const item of content.items) {
+        if (!item.str || !item.str.trim()) continue;
+        const y = Math.round(item.transform[5] / 4) * 4;
+        if (!lineMap.has(y)) lineMap.set(y, []);
+        lineMap.get(y).push({ x: item.transform[4], str: item.str });
+      }
+      if (!lineMap.size) continue;
+
+      // Step 2: sort top→bottom (descending y), within each line left→right (ascending x)
+      const lines = [...lineMap.entries()]
+        .sort((a, b) => b[0] - a[0])
+        .map(([y, items]) => ({
+          y,
+          text: items.sort((a, b) => a.x - b.x).map(i => i.str).join('')
+        }))
+        .filter(l => l.text.trim());
+
+      if (lines.length <= 1) {
+        pageTexts.push(lines[0]?.text ?? '');
+        continue;
+      }
+
+      // Step 3: measure y-gaps between consecutive lines to find typical line height
+      const gaps = [];
+      for (let j = 1; j < lines.length; j++) {
+        gaps.push(lines[j - 1].y - lines[j].y);
+      }
+      const sortedGaps = [...gaps].sort((a, b) => a - b);
+      // Lower quartile = consistent within-paragraph spacing (robust against large outliers)
+      const lineHeight   = sortedGaps[Math.floor(sortedGaps.length * 0.25)] || 12;
+      const paraBreakMin = lineHeight * 1.5; // gap larger than this = new paragraph
+
+      // Step 4: merge wrapped lines into paragraphs; only split on real paragraph gaps
+      const paras = [];
+      let cur = lines[0].text;
+      for (let j = 1; j < lines.length; j++) {
+        const gap = lines[j - 1].y - lines[j].y;
+        if (gap <= paraBreakMin) {
+          cur += lines[j].text; // wrapped line — concatenate directly (Chinese needs no space)
+        } else {
+          paras.push(cur);
+          cur = lines[j].text;
+        }
+      }
+      paras.push(cur);
+      pageTexts.push(paras.join('\n\n'));
+    }
+
+    return pageTexts.join('\n\n');
+  }
+
+  static async #docx(file) {
+    if (!window.mammoth) throw new Error('DOCX 解析库未加载，请检查网络后刷新');
+    const ab  = await file.arrayBuffer();
+    const res = await mammoth.extractRawText({ arrayBuffer: ab });
+    if (!res.value) throw new Error('DOCX 内容为空或格式不支持');
+    return res.value;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ReviewParser — 解析 AI 返回的批改文本
+═══════════════════════════════════════════════════════════════ */
+class ReviewParser {
+  static parse(text) {
+    const sm    = text.match(/SCORE:\s*(\d{1,3})/i);
+    const score = sm ? Math.min(100, Math.max(0, parseInt(sm[1]))) : null;
+
+    const sect  = key => {
+      const re = new RegExp(`【${key}】\\s*\\n([\\s\\S]*?)(?=【[^】]+】|$)`);
+      const m  = text.match(re);
+      return m ? m[1].trim() : '';
+    };
+
+    const errRaw = sect('错题记录');
+    const errors = errRaw.split('\n').map(l => l.replace(/^[\-•·]\s*/, '').trim()).filter(Boolean);
+
+    return { score, strengths: sect('优点'), weaknesses: sect('主要问题'), feedback: sect('批改意见'), errors, raw: text };
+  }
+
+  static scoreLabel(s) {
+    if (s === null) return '—';
+    if (s >= 90) return '卓越';
+    if (s >= 80) return '优秀';
+    if (s >= 70) return '良好 · 待提升';
+    if (s >= 60) return '达标 · 仍需努力';
+    return '需要加强';
+  }
+
+  static scoreClass(s) {
+    if (s === null) return '';
+    if (s >= 85)   return 'c-green';
+    if (s >= 75)   return 'c-blue';
+    if (s >= 60)   return 'c-orange';
+    return 'c-red';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ApiService — DeepSeek API 调用
+═══════════════════════════════════════════════════════════════ */
+class ApiService {
+  static #URL   = 'https://api.deepseek.com/chat/completions';
+  static #MODEL = 'deepseek-chat';
+
+  static async #post(key, messages) {
+    const res = await fetch(this.#URL, {
+      method:  'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-      body: JSON.stringify({
-        model: 'deepseek-chat',
-        messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages]
-      })
+      body:    JSON.stringify({ model: this.#MODEL, messages }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err?.error?.message || `HTTP ${res.status}`);
+      throw new Error(err?.error?.message || `请求失败（HTTP ${res.status}）`);
     }
-    const data = await res.json();
-    const reply = data.choices[0].message.content;
-    messages.push({ role: 'assistant', content: reply });
-    typing.remove();
-    addBubble('assistant', reply);
-  } catch (e) {
-    typing.remove();
-    addBubble('assistant', `出错了：${e.message}\n请检查 API Key 和网络。`);
-  } finally {
-    onDone?.();
+    const data    = await res.json();
+    const content = data?.choices?.[0]?.message?.content;
+    if (!content) throw new Error('AI 返回了空响应，请重试');
+    return content;
+  }
+
+  static reviewEssay(key, essay, contextPrompt) {
+    const sys = this.#reviewPrompt(contextPrompt);
+    return this.#post(key, [
+      { role: 'system', content: sys },
+      { role: 'user',   content: `【申论作答全文】\n${essay}` },
+    ]);
+  }
+
+  static summarizeNews(key, text) {
+    const sys = `你是时政分析专家，帮助备考公务员的学生提炼时政要点。
+请对材料按以下三部分输出，每部分用中文标题标识，内容要简洁干净：
+
+一、核心要点
+用2-3句话概括事件或政策的核心内容。
+
+二、关键数据与表述
+列出重要数字、官方表述或金句，每条一行，直接写内容。
+
+三、申论应用
+说明可用于哪类申论题目，并给出一个可直接套用的申论句式。
+
+严格禁止：不得使用 * ** # ## 等任何 Markdown 符号，不得加粗，不得用井号标题，只用纯文字和中文标点。`;
+    return this.#post(key, [
+      { role: 'system', content: sys },
+      { role: 'user',   content: text },
+    ]);
+  }
+
+  // Strip any markdown symbols the model may still produce
+  static cleanMarkdown(text) {
+    return text
+      .replace(/#{1,6}\s*/g, '')          // ## headers
+      .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1')  // *bold* **bold** ***bold***
+      .replace(/^[\*\-]\s+/gm, '• ')      // bullet * or - → •
+      .replace(/`{1,3}[^`]*`{1,3}/g, s => s.replace(/`/g, ''))  // inline code
+      .replace(/\n{3,}/g, '\n\n')         // collapse excessive blank lines
+      .trim();
+  }
+
+  static askAboutText(key, selection, question) {
+    return this.#post(key, [
+      { role: 'system', content: '你是申论导师，专门帮助学生将政策材料转化为申论写作素材。回答要结合考公实战，给出具体可用的句式或论据。' },
+      { role: 'user',   content: `【材料选段】\n"${selection}"\n\n【问题】\n${question}` },
+    ]);
+  }
+
+  static #reviewPrompt(ctx) {
+    const base = `你是专业申论评分导师，评分标准参照国家公务员考试申论阅卷规范。
+
+请批改下面的申论，严格按以下格式输出，不得偏离：
+
+SCORE: [0-100 整数]
+
+【优点】
+- 优点一（具体说明，引用原文）
+- 优点二（具体说明）
+
+【主要问题】
+- 最严重问题（引用原文具体句子）
+- 次要问题（引用原文）
+
+【批改意见】
+只针对最严重的 1-2 个问题给出改写建议：
+原句：xxx
+改写：xxx
+原因：（一句话，说明为何这样改更符合阅卷标准）
+
+【错题记录】
+- [10字以内描述需记入错题本的核心错误]
+
+注意：语气像学长/学姐，严格但温和；每次只深入批改最突出的 1-2 个问题。`;
+    return ctx ? `${base}\n\n${ctx}` : base;
   }
 }
 
-function addBubble(role, text) {
-  const chat = document.getElementById('chat');
-  const div = document.createElement('div');
-  div.className = `bubble ${role}`;
-  div.innerHTML = `<div class="role-label">${role === 'user' ? '你' : '🎓 AI导师'}</div><span class="bubble-text">${escapeHtml(text)}</span>`;
-  chat.appendChild(div);
-  chat.scrollTop = chat.scrollHeight;
+/* ═══════════════════════════════════════════════════════════════
+   DragManager — 可拖拽窗口
+═══════════════════════════════════════════════════════════════ */
+class DragManager {
+  static bind(el, handle) {
+    let dragging = false, ox = 0, oy = 0, sx = 0, sy = 0;
+
+    const onStart = (cx, cy) => {
+      dragging = true;
+      const r = el.getBoundingClientRect();
+      ox = r.left; oy = r.top; sx = cx; sy = cy;
+      el.style.right = 'auto'; el.style.bottom = 'auto';
+      el.style.left = ox + 'px'; el.style.top = oy + 'px';
+    };
+
+    const onMove = (cx, cy) => {
+      if (!dragging) return;
+      el.style.left = Math.max(0, Math.min(window.innerWidth  - el.offsetWidth,  ox + cx - sx)) + 'px';
+      el.style.top  = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, oy + cy - sy)) + 'px';
+    };
+
+    const onEnd = () => { dragging = false; };
+
+    handle.addEventListener('mousedown',  e => { onStart(e.clientX, e.clientY); e.preventDefault(); });
+    document.addEventListener('mousemove', e => onMove(e.clientX, e.clientY));
+    document.addEventListener('mouseup',   onEnd);
+    handle.addEventListener('touchstart',  e => { const t = e.touches[0]; onStart(t.clientX, t.clientY); }, { passive: true });
+    document.addEventListener('touchmove', e => { if (!dragging) return; const t = e.touches[0]; onMove(t.clientX, t.clientY); }, { passive: true });
+    document.addEventListener('touchend',  onEnd);
+  }
 }
 
-window.onload = () => {
-  const k = getKey();
-  if (k) document.getElementById('api-key-input').value = k;
-};
+/* ═══════════════════════════════════════════════════════════════
+   App — 主控制器
+═══════════════════════════════════════════════════════════════ */
+class App {
+  #memory = new MemoryService();
+  #materials   = [];       // { id, name, content }
+  #newsText    = '';
+  #newsFileName = '';
+  #essayText   = '';       // last submitted essay
+  #lastReview  = null;     // ReviewParser result
+  #selText    = null;     // text selected in center panel
+  #toastTimer = null;
+
+  get #key() {
+    const k = StorageService.getApiKey();
+    if (!k) { this.#openOverlay('settings-overlay'); this.#toast('请先填写 DeepSeek API Key'); return null; }
+    return k;
+  }
+
+  init() {
+    this.#setupPdfWorker();
+    this.#bindEvents();
+    this.#loadSettingsValues();
+  }
+
+  // ── Setup ────────────────────────────────────────────────────────────────
+
+  #setupPdfWorker() {
+    if (window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+  }
+
+  #loadSettingsValues() {
+    const k = StorageService.getApiKey();
+    if (k) document.getElementById('settings-key').value = k;
+  }
+
+  // ── Event binding ─────────────────────────────────────────────────────────
+
+  #bindEvents() {
+    // Header
+    this.#on('btn-history',  () => this.#openHistory());
+    this.#on('btn-settings', () => this.#openOverlay('settings-overlay'));
+
+    // Settings overlay
+    this.#on('btn-close-settings', () => this.#closeOverlay('settings-overlay'));
+    this.#on('btn-save-key',       () => this.#saveApiKey());
+    this.#on('btn-clear-key',      () => this.#clearApiKey());
+    this.#on('btn-clear-memory',   () => this.#clearMemory());
+
+    // History overlay
+    this.#on('btn-close-history', () => this.#closeOverlay('history-overlay'));
+
+    // Feature tabs
+    document.querySelectorAll('.feature-tab').forEach(btn =>
+      btn.addEventListener('click', () => this.#switchTab(btn.dataset.tab))
+    );
+
+    // Material upload
+    this.#onFile('material-input', files => this.#uploadMaterials(files));
+
+    // Essay
+    this.#onFile('essay-input', files => this.#loadEssayFile(files[0]));
+    document.getElementById('essay-textarea').addEventListener('input', () => this.#onEssayInput());
+    this.#on('btn-submit-essay', () => this.#submitEssay());
+
+    // News
+    this.#onFile('news-input', files => this.#loadNewsFile(files[0]));
+    this.#on('btn-submit-news', () => this.#submitNews());
+
+    // Revision mode
+    this.#on('btn-exit-revision',       () => this.#exitRevision());
+    this.#on('btn-resubmit-revision',   () => this.#resubmitRevision());
+    this.#on('float-toggle',            () => this.#toggleFloat());
+
+    // Float drag
+    DragManager.bind(document.getElementById('float-win'), document.getElementById('float-handle'));
+
+    // Text selection in center
+    document.getElementById('panel-center').addEventListener('mouseup', () => this.#onCenterSelect());
+    document.addEventListener('mousedown', e => {
+      if (!document.getElementById('sel-popup').contains(e.target)) this.#hideSelPopup();
+    });
+    this.#on('pop-explain',  () => this.#askSel('这段话核心意思是什么？在申论中怎么用？'));
+    this.#on('pop-usage',    () => this.#askSel('这个表述在申论写作中怎么用？给出一个申论句式。'));
+    this.#on('pop-argument', () => this.#askSel('这段内容可以作为哪类申论题的论据？如何引用？'));
+
+    // Overlay backdrop close
+    document.querySelectorAll('.overlay').forEach(el =>
+      el.addEventListener('click', e => { if (e.target === el) this.#closeOverlay(el.id); })
+    );
+  }
+
+  // ── API Key ───────────────────────────────────────────────────────────────
+
+  #saveApiKey() {
+    const k = document.getElementById('settings-key').value.trim();
+    if (!k.startsWith('sk-')) { this.#toast('Key 格式不对，应以 sk- 开头'); return; }
+    StorageService.setApiKey(k);
+    this.#toast('API Key 已保存');
+    this.#closeOverlay('settings-overlay');
+  }
+
+  #clearApiKey() {
+    StorageService.clearApiKey();
+    document.getElementById('settings-key').value = '';
+    this.#toast('已清除 API Key');
+  }
+
+  #clearMemory() {
+    if (!confirm('确定要清除所有学习记录和错题本吗？此操作不可恢复。')) return;
+    this.#memory.clear();
+    this.#toast('学习记录已清除');
+  }
+
+  // ── Material upload ───────────────────────────────────────────────────────
+
+  async #uploadMaterials(files) {
+    for (const file of Array.from(files)) {
+      try {
+        const content = await FileParser.parse(file);
+        const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+        this.#materials.push({ id, name: file.name, content });
+        this.#renderMaterials();
+        this.#showMaterial(id);
+      } catch (e) {
+        this.#toast(e.message);
+      }
+    }
+    document.getElementById('material-input').value = '';
+  }
+
+  #renderMaterials() {
+    const el = document.getElementById('material-list');
+    if (!this.#materials.length) { el.innerHTML = '<div class="list-empty">暂无材料</div>'; return; }
+    el.innerHTML = this.#materials.map(m => `
+      <div class="material-item" data-id="${m.id}">
+        <span>${this.#fileIcon(m.name)}</span>
+        <span class="material-name" title="${this.#esc(m.name)}">${this.#esc(m.name)}</span>
+        <button class="material-del" data-del="${m.id}">✕</button>
+      </div>`).join('');
+
+    el.querySelectorAll('.material-item').forEach(item =>
+      item.addEventListener('click', e => {
+        const del = e.target.dataset.del;
+        del ? this.#deleteMaterial(del) : this.#showMaterial(item.dataset.id);
+      })
+    );
+  }
+
+  #deleteMaterial(id) {
+    this.#materials = this.#materials.filter(m => m.id !== id);
+    this.#renderMaterials();
+    this.#showPlaceholder();
+  }
+
+  #showMaterial(id) {
+    const m = this.#materials.find(x => x.id === id);
+    if (!m) return;
+    document.querySelectorAll('.material-item').forEach(el =>
+      el.classList.toggle('active', el.dataset.id === id)
+    );
+    this.#setCenter(`
+      <div class="material-viewer-title">${this.#fileIcon(m.name)} ${this.#esc(m.name)}</div>
+      <div class="material-viewer-body">${this.#esc(m.content)}</div>
+    `);
+  }
+
+  // ── Essay ─────────────────────────────────────────────────────────────────
+
+  async #loadEssayFile(file) {
+    if (!file) return;
+    try {
+      const text = await FileParser.parse(file);
+      document.getElementById('essay-textarea').value = text;
+      this.#onEssayInput();
+      this.#toast(`已加载：${file.name}`);
+    } catch (e) {
+      this.#toast(e.message);
+    }
+    document.getElementById('essay-input').value = '';
+  }
+
+  #onEssayInput() {
+    const len = document.getElementById('essay-textarea').value.trim().length;
+    document.getElementById('essay-wc').textContent = `${len} 字`;
+    document.getElementById('btn-submit-essay').disabled = len === 0;
+  }
+
+  async #submitEssay() {
+    const essay = document.getElementById('essay-textarea').value.trim();
+    if (!essay) return;
+    const key = this.#key;
+    if (!key) return;
+
+    this.#essayText = essay;
+    this.#setBtnLoading('btn-submit-essay', true, '批改中…');
+    this.#setCenterLoading('AI导师正在批改，请稍候…');
+
+    try {
+      const ctx = this.#memory.buildContextPrompt();
+      const raw = await ApiService.reviewEssay(key, essay, ctx);
+      const parsed = ReviewParser.parse(raw);
+      this.#lastReview = parsed;
+      this.#memory.addSession({ essay, rawReview: raw, score: parsed.score, errors: parsed.errors });
+      this.#renderReview(parsed);
+    } catch (e) {
+      this.#setCenterError(`批改失败：${e.message}`);
+    } finally {
+      this.#setBtnLoading('btn-submit-essay', false, '提交批改');
+    }
+  }
+
+  #renderReview(p) {
+    const sc = p.score !== null;
+    const col = ReviewParser.scoreClass(p.score);
+    const lbl = ReviewParser.scoreLabel(p.score);
+
+    const scoreHtml = sc ? `
+      <div class="score-card">
+        <div class="score-number ${col}">${p.score}</div>
+        <div class="score-label">${lbl}</div>
+      </div>` : '';
+
+    const sec = (title, content) => content ? `
+      <div class="review-section">
+        <div class="review-section-title">${title}</div>
+        <div class="review-section-body">${this.#esc(content)}</div>
+      </div>` : '';
+
+    const errHtml = p.errors.length
+      ? sec('已记入错题本', p.errors.map(e => `• ${e}`).join('\n'))
+      : '';
+
+    this.#setCenter(`
+      <div id="review-wrap">
+        ${scoreHtml}
+        ${sec('优点', p.strengths)}
+        ${sec('主要问题', p.weaknesses)}
+        ${sec('批改意见', p.feedback)}
+        ${errHtml}
+        <div class="review-actions">
+          <button class="btn-revise"      id="btn-goto-revise">✏️ 回去改正</button>
+          <button class="btn-clear-essay" id="btn-clear-essay">清空重写</button>
+        </div>
+      </div>
+    `);
+
+    document.getElementById('btn-goto-revise').onclick = () => this.#enterRevision();
+    document.getElementById('btn-clear-essay').onclick = () => {
+      document.getElementById('essay-textarea').value = '';
+      this.#onEssayInput();
+      this.#showPlaceholder();
+      this.#toast('已清空，可重新作答');
+    };
+  }
+
+  // ── Revision mode ─────────────────────────────────────────────────────────
+
+  #enterRevision() {
+    if (!this.#lastReview) return;
+    const rv = document.getElementById('revision-textarea');
+    rv.value = this.#essayText;
+    document.getElementById('float-body').textContent = this.#lastReview.raw;
+    const fw = document.getElementById('float-win');
+    fw.style.left = ''; fw.style.top = ''; fw.style.right = '28px'; fw.style.bottom = '28px';
+    fw.classList.remove('minimized');
+    document.getElementById('float-toggle').textContent = '─';
+    document.getElementById('main-view').style.display    = 'none';
+    document.getElementById('revision-view').style.display = 'flex';
+    rv.focus();
+  }
+
+  #exitRevision() {
+    document.getElementById('revision-view').style.display = 'none';
+    document.getElementById('main-view').style.display     = 'flex';
+    const revised = document.getElementById('revision-textarea').value;
+    if (revised !== this.#essayText) {
+      document.getElementById('essay-textarea').value = revised;
+      this.#onEssayInput();
+      this.#toast('已同步修改内容，可点击"提交批改"再次批改');
+    }
+  }
+
+  async #resubmitRevision() {
+    const essay = document.getElementById('revision-textarea').value.trim();
+    if (!essay) return;
+    const key = this.#key;
+    if (!key) return;
+
+    this.#essayText = essay;
+    const btn = document.getElementById('btn-resubmit-revision');
+    btn.disabled = true; btn.textContent = '批改中…';
+
+    try {
+      const ctx = this.#memory.buildContextPrompt();
+      const raw = await ApiService.reviewEssay(key, essay, ctx);
+      const parsed = ReviewParser.parse(raw);
+      this.#lastReview = parsed;
+      this.#memory.addSession({ essay, rawReview: raw, score: parsed.score, errors: parsed.errors });
+      // Update float window with new review
+      document.getElementById('float-body').textContent = raw;
+      this.#toast(`新批改分数：${parsed.score ?? '—'}`);
+      // Also update main view center (for when user exits)
+      this.#renderReview(parsed);
+    } catch (e) {
+      this.#toast(`批改失败：${e.message}`);
+    } finally {
+      btn.disabled = false; btn.textContent = '提交修改版';
+    }
+  }
+
+  #toggleFloat() {
+    const fw  = document.getElementById('float-win');
+    const btn = document.getElementById('float-toggle');
+    fw.classList.toggle('minimized');
+    btn.textContent = fw.classList.contains('minimized') ? '□' : '─';
+  }
+
+  // ── News ──────────────────────────────────────────────────────────────────
+
+  async #loadNewsFile(file) {
+    if (!file) return;
+    try {
+      this.#newsText     = await FileParser.parse(file);
+      this.#newsFileName = file.name;
+      document.getElementById('news-indicator').textContent = `📄 ${file.name}`;
+      document.getElementById('news-indicator').style.display = 'block';
+      document.getElementById('btn-submit-news').disabled = false;
+      this.#toast(`已加载：${file.name}`);
+    } catch (e) {
+      this.#toast(e.message);
+    }
+    document.getElementById('news-input').value = '';
+  }
+
+  async #submitNews() {
+    if (!this.#newsText) return;
+    const key = this.#key;
+    if (!key) return;
+
+    this.#setBtnLoading('btn-submit-news', true, '总结中…');
+    this.#setCenterLoading('正在提炼时政要点…');
+
+    try {
+      const result = await ApiService.summarizeNews(key, this.#newsText);
+      const clean  = ApiService.cleanMarkdown(result);
+      this.#memory.addNewsSummary({ fileName: this.#newsFileName, summary: clean });
+      this.#setCenter(`
+        <div class="review-section">
+          <div class="review-section-title">时政总结 · ${this.#esc(this.#newsFileName)}</div>
+          <div class="review-section-body">${this.#esc(clean)}</div>
+        </div>
+      `);
+    } catch (e) {
+      this.#setCenterError(`总结失败：${e.message}`);
+    } finally {
+      this.#setBtnLoading('btn-submit-news', false, '总结提炼');
+    }
+  }
+
+  // ── Text selection ────────────────────────────────────────────────────────
+
+  #onCenterSelect() {
+    setTimeout(() => {
+      const sel  = window.getSelection();
+      const text = sel?.toString().trim();
+      if (!text || text.length < 4) { this.#hideSelPopup(); return; }
+      this.#selText = text;
+      const popup = document.getElementById('sel-popup');
+      popup.style.display = 'flex';
+      const rect = sel.getRangeAt(0).getBoundingClientRect();
+      let top  = rect.top  - 50 + window.scrollY;
+      let left = rect.left + window.scrollX;
+      if (top < 8) top = rect.bottom + 10 + window.scrollY;
+      left = Math.max(8, Math.min(left, window.innerWidth - 280));
+      popup.style.top  = top  + 'px';
+      popup.style.left = left + 'px';
+    }, 10);
+  }
+
+  #hideSelPopup() {
+    document.getElementById('sel-popup').style.display = 'none';
+    this.#selText = null;
+  }
+
+  async #askSel(question) {
+    const sel = this.#selText;
+    this.#hideSelPopup();
+    if (!sel) return;
+    const key = this.#key;
+    if (!key) return;
+
+    const cardId = 'sel-' + Date.now().toString(36);
+    const inner  = document.getElementById('center-inner');
+    if (inner) {
+      const card = document.createElement('div');
+      card.className = 'sel-answer-card'; card.id = cardId;
+      card.innerHTML = `
+        <div class="sel-answer-question">❝ ${this.#esc(sel.slice(0, 40))}${sel.length > 40 ? '…' : ''} ❞ — ${this.#esc(question)}</div>
+        <div class="sel-answer-body"><span class="loading-dots"><span></span><span></span><span></span></span></div>
+      `;
+      inner.appendChild(card);
+      card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    try {
+      const answer = await ApiService.askAboutText(key, sel, question);
+      const body   = document.querySelector(`#${cardId} .sel-answer-body`);
+      if (body) body.textContent = answer;
+    } catch (e) {
+      const body = document.querySelector(`#${cardId} .sel-answer-body`);
+      if (body) body.textContent = `出错：${e.message}`;
+    }
+  }
+
+  // ── History ───────────────────────────────────────────────────────────────
+
+  #openHistory() {
+    const errors   = this.#memory.getTopErrors();
+    const sessions = this.#memory.getSessions();
+
+    const errHtml = errors.length
+      ? errors.map(([e, n]) => `<span class="error-chip">${this.#esc(e)}<span class="error-chip-n">${n}</span></span>`).join('')
+      : '<p class="history-empty">暂无记录，提交批改后自动生成</p>';
+
+    const essaySessions = sessions.filter(s => s.type === 'essay' || !s.type);
+    const newsSessions  = sessions.filter(s => s.type === 'news');
+
+    const renderEssayCard = s => {
+      const col  = ReviewParser.scoreClass(s.score);
+      const date = new Date(s.ts).toLocaleDateString('zh-CN');
+      return `<div class="session-card">
+        <div class="session-meta">
+          <span class="session-score ${col}">${s.score ?? '—'}</span>
+          <span class="session-date">${date}</span>
+        </div>
+        <div class="session-preview">${this.#esc(s.preview)}…</div>
+        <div class="session-actions">
+          <button class="btn-restore" data-id="${s.id}">↩ 从这版继续修改</button>
+        </div>
+      </div>`;
+    };
+
+    const renderNewsCard = s => {
+      const date = new Date(s.ts).toLocaleDateString('zh-CN');
+      return `<div class="session-card">
+        <div class="session-meta">
+          <span class="session-type-tag">时政</span>
+          <span class="session-date">${date}</span>
+        </div>
+        <div class="session-preview">📰 ${this.#esc(s.preview)}</div>
+        <div class="session-actions">
+          <button class="btn-restore btn-view-news" data-id="${s.id}">👁 查看总结</button>
+        </div>
+      </div>`;
+    };
+
+    const essayHtml = essaySessions.length
+      ? essaySessions.map(renderEssayCard).join('')
+      : '<p class="history-empty">暂无批改记录</p>';
+
+    const newsHtml = newsSessions.length
+      ? newsSessions.map(renderNewsCard).join('')
+      : '<p class="history-empty">暂无时政总结记录</p>';
+
+    const content = document.getElementById('history-content');
+    content.innerHTML = `
+      <div class="history-label">错题本 · 高频错误</div>
+      <div>${errHtml}</div>
+      <div class="history-label">申论批改历史（最近记录）</div>
+      ${essayHtml}
+      <div class="history-label">时政总结历史</div>
+      ${newsHtml}
+    `;
+
+    content.querySelectorAll('.btn-restore:not(.btn-view-news)').forEach(btn =>
+      btn.addEventListener('click', () => this.#restoreSession(btn.dataset.id))
+    );
+    content.querySelectorAll('.btn-view-news').forEach(btn =>
+      btn.addEventListener('click', () => this.#viewNewsSummary(btn.dataset.id))
+    );
+
+    this.#openOverlay('history-overlay');
+  }
+
+  #viewNewsSummary(id) {
+    const session = this.#memory.getSessions().find(s => s.id === id);
+    if (!session?.summary) return;
+    this.#setCenter(`
+      <div class="review-section">
+        <div class="review-section-title">时政总结 · ${this.#esc(session.preview)}</div>
+        <div class="review-section-body">${this.#esc(session.summary)}</div>
+      </div>
+    `);
+    this.#closeOverlay('history-overlay');
+    this.#switchTab('news');
+    this.#toast('已加载历史时政总结');
+  }
+
+  #restoreSession(id) {
+    const session = this.#memory.getSessions().find(s => s.id === id);
+    if (!session) return;
+
+    // Restore essay text to input and show previous review in center
+    document.getElementById('essay-textarea').value = session.essay ?? session.preview;
+    this.#onEssayInput();
+    this.#essayText  = session.essay ?? session.preview;
+
+    if (session.rawReview) {
+      this.#lastReview = ReviewParser.parse(session.rawReview);
+      this.#renderReview(this.#lastReview);
+    }
+
+    this.#closeOverlay('history-overlay');
+    this.#switchTab('essay');
+    this.#toast('已恢复上次作文，可继续修改或重新提交');
+  }
+
+  // ── Feature tabs ──────────────────────────────────────────────────────────
+
+  #switchTab(tab) {
+    document.querySelectorAll('.feature-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    document.getElementById('tab-essay').style.display = tab === 'essay' ? 'flex' : 'none';
+    document.getElementById('tab-news').style.display  = tab === 'news'  ? 'flex' : 'none';
+  }
+
+  // ── Overlay ───────────────────────────────────────────────────────────────
+
+  #openOverlay(id)  { document.getElementById(id).classList.add('open'); }
+  #closeOverlay(id) { document.getElementById(id).classList.remove('open'); }
+
+  // ── Center panel helpers ──────────────────────────────────────────────────
+
+  #showPlaceholder() {
+    document.getElementById('center-placeholder').style.display = '';
+    document.getElementById('center-content').style.display     = 'none';
+  }
+
+  #setCenter(html) {
+    document.getElementById('center-placeholder').style.display = 'none';
+    const cc = document.getElementById('center-content');
+    cc.style.display = '';
+    document.getElementById('center-inner').innerHTML = html;
+    cc.scrollTop = 0;
+  }
+
+  #setCenterLoading(msg) {
+    this.#setCenter(`<div class="loading-wrap">
+      <div class="loading-dots"><span></span><span></span><span></span></div>
+      <div class="loading-label">${this.#esc(msg)}</div>
+    </div>`);
+  }
+
+  #setCenterError(msg) {
+    this.#setCenter(`<div class="error-msg">${this.#esc(msg)}</div>`);
+  }
+
+  // ── Misc helpers ──────────────────────────────────────────────────────────
+
+  #on(id, fn)       { document.getElementById(id).addEventListener('click', fn); }
+  #onFile(id, fn)   { document.getElementById(id).addEventListener('change', e => fn(e.target.files)); }
+  #setBtnLoading(id, loading, text) {
+    const btn = document.getElementById(id);
+    btn.disabled = loading; btn.textContent = text;
+  }
+
+  #toast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(this.#toastTimer);
+    this.#toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
+  }
+
+  #esc(s) {
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  #fileIcon(name) {
+    const ext = name.split('.').pop().toLowerCase();
+    return { pdf: '📕', docx: '📘', doc: '📘', txt: '📄' }[ext] || '📎';
+  }
+}
+
+/* ── Bootstrap ─────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', () => new App().init());
 </script>
 </body>
 </html>
