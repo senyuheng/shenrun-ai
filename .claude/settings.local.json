@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh repo *)",
+      "Bash(git ls-remote *)",
+      "WebFetch(domain:github.com)",
+      "Bash(git remote *)",
+      "Bash(git fetch *)"
+    ]
+  }
+}

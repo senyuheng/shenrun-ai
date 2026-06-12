@@ -3,15 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>申论AI导师</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://unpkg.com/mammoth@1.8.0/mammoth.browser.min.js"></script>
+<title>AI公考Copilot</title>
+<script async src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script async src="https://unpkg.com/mammoth@1.8.0/mammoth.browser.min.js"></script>
+<script async src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #f0f2f5; color: #1c1c1e; }
+html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #f6f8fb; color: #1c1c1e; }
 
 /* ── Layout ─────────────────────────────────────────── */
-#main-view { display: flex; flex-direction: column; height: 100vh; }
+#main-view { display: flex; flex-direction: column; min-height: 100vh; }
 
 #app-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -28,15 +29,36 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 .header-btn:hover { background: #f5f5f5; }
 
 #columns {
-  display: grid;
-  grid-template-columns: 220px 1fr 300px;
-  flex: 1; overflow: hidden;
+  display: block;
+  flex: 1; overflow: hidden; padding-bottom: 72px;
+}
+#main-view.review-mode #columns {
+  display: block;
+  overflow: auto;
+}
+#main-view.review-mode #panel-left {
+  display: none;
+}
+#main-view.review-mode #panel-right {
+  max-width: 720px;
+  min-height: calc(100vh - 50px);
+}
+#main-view.review-mode #panel-center {
+  display: none;
+}
+#main-view.review-mode #single-result {
+  min-height: calc(100vh - 50px);
+  overflow: visible;
+  padding: 14px;
+}
+#main-view.review-mode.review-collapsed #single-result {
+  padding-top: 86px;
 }
 
 /* ── Left Panel ─────────────────────────────────────── */
 #panel-left {
   background: #fff; border-right: 1px solid #e5e7eb;
-  display: flex; flex-direction: column; overflow: hidden;
+  display: none; flex-direction: column; overflow: hidden;
 }
 .panel-title {
   padding: 14px 16px 8px; font-size: 11px; font-weight: 700;
@@ -70,7 +92,7 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 
 /* ── Center Panel ───────────────────────────────────── */
 #panel-center {
-  background: #f9fafb; display: flex; flex-direction: column; overflow: hidden; position: relative;
+  background: #f9fafb; display: none; flex-direction: column; overflow: hidden; position: relative;
 }
 .center-placeholder {
   flex: 1; display: flex; flex-direction: column;
@@ -79,6 +101,7 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 .placeholder-icon { font-size: 44px; }
 .placeholder-text { color: #9ca3af; font-size: 14px; text-align: center; line-height: 1.8; }
 #center-content { flex: 1; overflow-y: auto; padding: 20px 24px; }
+#center-inner { max-width: 860px; margin: 0 auto; }
 .material-viewer-title {
   font-size: 15px; font-weight: 700; color: #111; margin-bottom: 14px;
   padding-bottom: 12px; border-bottom: 1px solid #e5e7eb;
@@ -113,6 +136,24 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 .review-section-body {
   font-size: 14px; line-height: 1.85; color: #374151; white-space: pre-wrap;
 }
+.dimension-grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;
+  margin-bottom: 12px;
+}
+.dimension-card {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+  padding: 12px 14px;
+}
+.dimension-name { font-size: 12px; color: #6b7280; margin-bottom: 6px; }
+.dimension-score { font-size: 24px; font-weight: 800; color: #2563eb; }
+.rewrite-card {
+  background: #fff; border: 1px solid #bfdbfe; border-radius: 12px;
+  padding: 16px; margin-top: 18px;
+}
+.rewrite-card-title {
+  font-size: 15px; font-weight: 800; color: #1d4ed8; margin-bottom: 10px;
+}
+.rewrite-empty { color: #9ca3af; font-size: 14px; line-height: 1.8; }
 .review-actions { display: flex; gap: 10px; margin-top: 18px; padding-top: 14px; border-top: 1px solid #e5e7eb; }
 .btn-revise {
   flex: 1; background: #2563eb; color: #fff; border: none;
@@ -158,21 +199,81 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 
 /* ── Right Panel ─────────────────────────────────────── */
 #panel-right {
-  background: #fff; border-left: 1px solid #e5e7eb;
+  background: #fff;
+  width: 100%; max-width: 520px; margin: 0 auto;
   display: flex; flex-direction: column; overflow: hidden;
+  min-height: calc(100vh - 50px);
 }
-.feature-tabs { display: flex; border-bottom: 1px solid #e5e7eb; flex-shrink: 0; }
+.feature-tabs {
+  display: grid; grid-template-columns: 1fr; gap: 12px;
+  padding: 18px; flex-shrink: 0;
+}
 .feature-tab {
-  flex: 1; padding: 13px 0; text-align: center; font-size: 13px; font-weight: 500;
-  color: #6b7280; background: none; border: none; border-bottom: 2px solid transparent;
-  margin-bottom: -1px; cursor: pointer; transition: color .15s;
+  min-height: 92px; padding: 16px; text-align: left; font-size: 17px; font-weight: 800;
+  color: #1f2937; background: #fff; border: 1px solid #dbeafe; border-radius: 16px;
+  cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s;
+  box-shadow: 0 4px 14px rgba(37,99,235,.08);
 }
-.feature-tab.active { color: #2563eb; border-bottom-color: #2563eb; font-weight: 700; }
-.feature-tab:hover:not(.active) { color: #374151; }
+.feature-tab.active,
+.feature-tab:hover { color: #2563eb; border-color: #2563eb; background: #eff6ff; }
+.feature-tab::after {
+  content: attr(data-desc); display: block; margin-top: 8px;
+  font-size: 13px; line-height: 1.5; font-weight: 500; color: #6b7280;
+}
 .tab-content {
   flex: 1; overflow-y: auto; padding: 14px 14px 20px;
   display: flex; flex-direction: column; gap: 9px;
 }
+.single-result {
+  flex: 1; overflow-y: auto; padding: 14px 14px 20px; display: none;
+}
+.btn-back-home {
+  width: auto; align-self: flex-start; margin-bottom: 6px;
+}
+.result-topbar { margin-bottom: 10px; }
+.placeholder-card {
+  background: #fff; border: 1px solid #dbeafe; border-radius: 16px;
+  padding: 18px; box-shadow: 0 4px 14px rgba(37,99,235,.08);
+}
+.placeholder-card-title { font-size: 19px; font-weight: 900; color: #1d4ed8; margin-bottom: 10px; }
+.placeholder-card-body { font-size: 14px; line-height: 1.8; color: #4b5563; }
+.policy-card {
+  background: #fff; border: 1px solid #dbeafe; border-radius: 16px;
+  padding: 16px; margin-bottom: 12px; cursor: pointer;
+  box-shadow: 0 4px 14px rgba(37,99,235,.08);
+}
+.policy-card-title { font-size: 17px; font-weight: 900; color: #1f2937; margin-bottom: 8px; }
+.policy-card-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; color: #6b7280; }
+.policy-tag { display: inline-flex; padding: 2px 8px; border-radius: 999px; background: #eff6ff; color: #2563eb; font-weight: 700; }
+.policy-card-summary { font-size: 14px; line-height: 1.75; color: #4b5563; }
+.policy-card-more { margin-top: 10px; font-size: 13px; font-weight: 700; color: #2563eb; }
+.policy-detail-title { font-size: 22px; font-weight: 900; color: #1d4ed8; margin: 6px 0 14px; }
+.policy-detail-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.policy-source-title { font-size: 16px; font-weight: 900; color: #1d4ed8; margin-bottom: 8px; }
+.my-section { margin-bottom: 18px; }
+.my-section-title { font-size: 15px; font-weight: 900; color: #1f2937; margin: 4px 0 10px; }
+.my-card {
+  background: #fff; border: 1px solid #dbeafe; border-radius: 12px;
+  padding: 13px; margin-bottom: 10px; box-shadow: 0 8px 24px rgba(37,99,235,.06);
+}
+.my-card-top { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; margin-bottom: 8px; }
+.my-card-title { font-size: 15px; font-weight: 800; color: #1f2937; line-height: 1.45; }
+.my-card-date { flex-shrink: 0; font-size: 11px; color: #6b7280; line-height: 1.5; }
+.my-card-meta { font-size: 12px; color: #2563eb; font-weight: 800; margin-bottom: 9px; }
+.my-card-body { font-size: 13px; color: #4b5563; line-height: 1.7; margin-bottom: 10px; white-space: pre-wrap; }
+.my-empty { color: #9ca3af; font-size: 13px; line-height: 1.7; padding: 12px; background: #f9fafb; border-radius: 10px; }
+.bottom-nav {
+  position: fixed; left: 50%; bottom: 0; transform: translateX(-50%);
+  width: 100%; max-width: 520px; height: 64px; z-index: 650;
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  background: #fff; border-top: 1px solid #e5e7eb;
+  box-shadow: 0 -8px 24px rgba(15,23,42,.08);
+}
+.bottom-nav-btn {
+  border: none; background: transparent; color: #6b7280; font-size: 12px;
+  font-weight: 700; cursor: pointer;
+}
+.bottom-nav-btn.active { color: #2563eb; }
 .section-label { font-size: 11px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px; }
 .upload-file-btn {
   display: flex; align-items: center; gap: 6px; padding: 8px 12px;
@@ -194,6 +295,61 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 }
 .upload-zone-sm {
   margin: 0; padding: 16px 8px; font-size: 13px;
+}
+.form-select,
+.form-textarea {
+  width: 100%; border: 1px solid #e5e7eb; border-radius: 10px;
+  padding: 10px 11px; font-size: 14px; line-height: 1.75;
+  font-family: inherit; color: #1c1c1e; background: #fff;
+  transition: border-color .15s;
+}
+.form-select:focus,
+.form-textarea:focus { outline: none; border-color: #3b82f6; }
+.form-textarea { min-height: 150px; resize: vertical; }
+.form-textarea-sm { min-height: 120px; }
+.question-box {
+  min-height: 74px; padding: 10px 11px; border-radius: 10px;
+  border: 1px solid #dbeafe; background: #eff6ff; color: #1e3a8a;
+  font-size: 13px; line-height: 1.7; white-space: pre-wrap;
+}
+.question-box.empty { color: #9ca3af; background: #f9fafb; border-color: #e5e7eb; }
+.recorder-panel {
+  border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px;
+  background: #f9fafb; display: flex; flex-direction: column; gap: 8px;
+}
+.recorder-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.recorder-actions .btn-ghost { width: 100%; padding: 9px 8px; }
+.recorder-actions .btn-ghost.recording {
+  color: #dc2626; border-color: #fecaca; background: #fef2f2;
+}
+.recorder-meta {
+  display: flex; justify-content: space-between; gap: 8px;
+  font-size: 12px; color: #6b7280; line-height: 1.6;
+}
+.recorder-hint { font-size: 12px; color: #9ca3af; line-height: 1.6; }
+.recorder-audio { width: 100%; display: none; }
+.review-float-card {
+  position: fixed; top: 16px; right: 16px; z-index: 700;
+  display: none; min-width: 170px; max-width: min(260px, calc(100vw - 32px));
+  background: #fff; border: 1px solid #2563eb; border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(37,99,235,.18); padding: 12px 14px;
+  cursor: pointer;
+}
+.review-float-score { font-size: 26px; line-height: 1; font-weight: 900; color: #2563eb; margin-bottom: 6px; }
+.review-float-text { font-size: 13px; color: #1d4ed8; font-weight: 700; }
+@media (max-width: 760px) {
+  #columns { display: block; }
+  #panel-center { display: none; }
+  #panel-right { max-width: none; min-height: calc(100vh - 50px); }
+  .feature-tabs { grid-template-columns: 1fr; padding: 14px; }
+  .dimension-grid { grid-template-columns: 1fr; }
+  .review-float-card { top: 10px; right: 10px; }
+  #main-view.review-mode #single-result { padding: 10px; }
+  #main-view.review-mode .score-card { border-radius: 10px; padding: 16px; }
+  #main-view.review-mode .score-number { font-size: 48px; }
+  #main-view.review-mode .review-section,
+  #main-view.review-mode .rewrite-card { border-radius: 10px; }
+  #main-view.review-mode .review-actions { flex-direction: column; }
 }
 
 /* Buttons */
@@ -241,6 +397,12 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
   background: #fff; border-radius: 14px; overflow: hidden;
   box-shadow: 0 8px 32px rgba(0,0,0,.18); border: 1px solid #e5e7eb; z-index: 110;
 }
+#float-win.review-chip {
+  right: 20px; top: 64px; bottom: auto; width: 260px; max-height: 420px;
+}
+#float-win.review-chip.minimized {
+  width: 220px; cursor: pointer;
+}
 #float-handle {
   background: #1c1c1e; color: #fff; padding: 10px 14px; cursor: grab;
   display: flex; align-items: center; justify-content: space-between;
@@ -287,6 +449,12 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 .setting-input:focus { outline: none; border-color: #3b82f6; }
 .setting-hint { margin-top: 7px; font-size: 11px; color: #9ca3af; line-height: 1.6; }
 .overlay-footer { display: flex; flex-direction: column; gap: 8px; }
+.update-news-textarea {
+  width: 100%; min-height: 220px; resize: vertical; border: 1px solid #e5e7eb;
+  border-radius: 10px; padding: 12px; font-size: 14px; line-height: 1.75;
+  font-family: inherit; color: #1f2937; background: #fff;
+}
+.update-news-textarea:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,.08); }
 
 /* History */
 .history-label { font-size: 11px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px; margin: 16px 0 10px; }
@@ -345,7 +513,7 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 ═══════════════════════════════════════════════════ -->
 <div id="main-view">
   <header id="app-header">
-    <span class="header-title">🎓 申论AI导师</span>
+    <span class="header-title">AI公考Copilot</span>
     <div class="header-actions">
       <button class="header-btn" id="btn-history">历史 / 错题本</button>
       <button class="header-btn" id="btn-settings">⚙ 设置</button>
@@ -370,7 +538,7 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
     <section id="panel-center">
       <div id="center-placeholder" class="center-placeholder">
         <div class="placeholder-icon">📖</div>
-        <div class="placeholder-text">从左侧上传并选择材料预览<br>或提交申论后查看批改结果</div>
+        <div class="placeholder-text">从右侧选择功能开始练习<br>申论提交后会直接显示 AI批改结果</div>
       </div>
       <div id="center-content" style="display:none">
         <div id="center-inner"></div>
@@ -380,22 +548,69 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
     <!-- Right: feature panel -->
     <aside id="panel-right">
       <div class="feature-tabs">
-        <button class="feature-tab active" data-tab="essay">申论指导</button>
-        <button class="feature-tab" data-tab="news">时政总结</button>
+        <button class="feature-tab" data-tab="news" data-desc="每日热点、政策背景和公考使用场景">今日时政</button>
+        <button class="feature-tab" data-tab="podcast" data-desc="双人对话脚本，适合碎片化复习">双人播客</button>
+        <button class="feature-tab" data-tab="essay" data-desc="输入题目、材料和答案，获取AI批改">申论批改</button>
+        <button class="feature-tab" data-tab="interview" data-desc="选择岗位生成题目，输入回答后获得AI点评">面试模拟</button>
       </div>
+      <div id="single-result" class="single-result"></div>
 
       <!-- Essay feature -->
-      <div id="tab-essay" class="tab-content">
-        <div class="section-label">作文内容</div>
-        <label class="upload-file-btn" for="essay-input">📎 上传作文文件（TXT / PDF / DOCX）</label>
-        <input type="file" id="essay-input" accept=".txt,.pdf,.docx" style="display:none">
-        <textarea id="essay-textarea" placeholder="或在此直接粘贴 / 输入申论内容…"></textarea>
+      <div id="tab-essay" class="tab-content" style="display:none">
+        <button class="btn-ghost btn-back-home">返回首页</button>
+        <div class="section-label">题目</div>
+        <label class="upload-file-btn" for="essay-topic-input">📎 上传/拍照识别题目（TXT / PDF / DOCX / 图片）</label>
+        <input type="file" id="essay-topic-input" accept=".txt,.pdf,.docx,.jpg,.jpeg,.png,.webp,.bmp,image/*" style="display:none">
+        <textarea id="essay-topic" class="form-textarea form-textarea-sm" placeholder="请输入申论题目或作答要求…"></textarea>
+        <div class="section-label">材料</div>
+        <label class="upload-file-btn" for="essay-material-input">📎 上传/拍照识别材料（TXT / PDF / DOCX / 图片）</label>
+        <input type="file" id="essay-material-input" accept=".txt,.pdf,.docx,.jpg,.jpeg,.png,.webp,.bmp,image/*" style="display:none">
+        <textarea id="essay-material" class="form-textarea" placeholder="请输入或粘贴题目材料…"></textarea>
+        <div class="section-label">答案</div>
+        <label class="upload-file-btn" for="essay-input">📎 上传作文文件 / 手写照片（TXT / PDF / DOCX / 图片）</label>
+        <input type="file" id="essay-input" accept=".txt,.pdf,.docx,.jpg,.jpeg,.png,.webp,.bmp,image/*" style="display:none">
+        <textarea id="essay-textarea" placeholder="或在此直接粘贴 / 输入申论内容。上传手写中文照片后会先识别为文字，请校对后再提交…"></textarea>
         <div id="essay-wc" class="word-count">0 字</div>
-        <button id="btn-submit-essay" class="btn-primary" disabled>提交批改</button>
+        <button id="btn-submit-essay" class="btn-primary" disabled>开始批改</button>
+      </div>
+
+      <!-- Interview feature -->
+      <div id="tab-interview" class="tab-content" style="display:none">
+        <button class="btn-ghost btn-back-home">返回首页</button>
+        <div class="section-label">岗位类型</div>
+        <select id="interview-job" class="form-select">
+          <option value="国税">国税</option>
+          <option value="海关">海关</option>
+          <option value="街道办">街道办</option>
+          <option value="选调生">选调生</option>
+          <option value="综合岗">综合岗</option>
+        </select>
+        <button id="btn-generate-interview" class="btn-primary">生成面试题</button>
+        <div class="section-label">面试题</div>
+        <div id="interview-question-box" class="question-box empty">请先生成一道结构化面试题</div>
+        <div class="section-label">语音作答</div>
+        <div class="recorder-panel">
+          <div class="recorder-actions">
+            <button id="btn-start-recording" class="btn-ghost">开始录音</button>
+            <button id="btn-stop-recording" class="btn-ghost" disabled>结束录音</button>
+          </div>
+          <div class="recorder-meta">
+            <span id="recording-status">未开始录音</span>
+            <span id="recording-duration">00:00</span>
+          </div>
+          <audio id="recording-audio" class="recorder-audio" controls></audio>
+          <button id="btn-clear-recording" class="btn-ghost" style="display:none">清除录音</button>
+          <div class="recorder-hint">当前仅保存浏览器本地录音，不做自动转写。录音结束后请手动粘贴转写文本到下方回答框。</div>
+        </div>
+        <div class="section-label">你的回答</div>
+        <textarea id="interview-answer" class="form-textarea" placeholder="在此输入你的面试回答文本，或录音后手动粘贴转写文本…"></textarea>
+        <div id="interview-wc" class="word-count">0 字</div>
+        <button id="btn-review-interview" class="btn-primary" disabled>AI点评</button>
       </div>
 
       <!-- News feature -->
       <div id="tab-news" class="tab-content" style="display:none">
+        <button class="btn-ghost btn-back-home">返回首页</button>
         <div class="section-label">时政材料</div>
         <label class="upload-zone upload-zone-sm" for="news-input">
           <span>📰 上传时政材料</span>
@@ -403,10 +618,33 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
         </label>
         <input type="file" id="news-input" accept=".txt,.pdf,.docx" style="display:none">
         <div id="news-indicator" class="file-indicator" style="display:none"></div>
-        <button id="btn-submit-news" class="btn-primary" disabled>总结提炼</button>
+        <textarea id="news-textarea" class="form-textarea" placeholder="或在此粘贴时政材料…"></textarea>
+        <div id="news-wc" class="word-count">0 字</div>
+        <button id="btn-submit-news" class="btn-primary" disabled>精读提炼</button>
+      </div>
+
+      <!-- Podcast feature -->
+      <div id="tab-podcast" class="tab-content" style="display:none">
+        <button class="btn-ghost btn-back-home">返回首页</button>
+        <div class="section-label">选择时政</div>
+        <select id="podcast-policy" class="form-select">
+          <option value="new-quality-productivity">新质生产力</option>
+          <option value="modern-grassroots-governance">基层治理现代化</option>
+          <option value="silver-economy">银发经济</option>
+        </select>
+        <div id="podcast-policy-preview" class="question-box">
+          选择一条时政后，AI会生成主持人A和主持人B的双人播客脚本，内容围绕热点背景、为什么重要、申论怎么用、面试怎么答和速记总结。
+        </div>
+        <button id="btn-submit-podcast" class="btn-primary">生成播客脚本</button>
       </div>
     </aside>
   </div>
+  <nav id="bottom-nav" class="bottom-nav">
+    <button class="bottom-nav-btn active" data-nav="home">首页</button>
+    <button class="bottom-nav-btn" data-nav="news">时政</button>
+    <button class="bottom-nav-btn" data-nav="practice">练习</button>
+    <button class="bottom-nav-btn" data-nav="mine">我的</button>
+  </nav>
 </div>
 
 <!-- Text selection popup -->
@@ -472,8 +710,32 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════
+     POLICY UPDATE OVERLAY
+═══════════════════════════════════════════════════ -->
+<div class="overlay" id="policy-update-overlay">
+  <div class="overlay-card">
+    <div class="overlay-header">
+      <span>更新今日时政</span>
+      <button class="btn-close" id="btn-close-policy-update">✕</button>
+    </div>
+    <div class="setting-group">
+      <label class="setting-label" for="policy-update-textarea">粘贴当天新闻 / 政策材料</label>
+      <textarea id="policy-update-textarea" class="update-news-textarea" placeholder="把今天看到的新闻、政策原文、公众号材料或要点粘贴到这里…"></textarea>
+      <p class="setting-hint">AI会提炼成一条可用于申论、面试和播客复习的时政卡片，并保存在本地浏览器。</p>
+    </div>
+    <div class="overlay-footer">
+      <button id="btn-generate-policy-card" class="btn-primary">AI生成时政考点</button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast -->
 <div id="toast"></div>
+<div id="review-float-card" class="review-float-card">
+  <div id="review-float-score" class="review-float-score">—</div>
+  <div class="review-float-text">查看批改结果</div>
+</div>
 
 <script>
 'use strict';
@@ -509,21 +771,97 @@ class MemoryService {
     this.#data = StorageService.getMemory();
   }
 
-  addSession({ essay, rawReview, score, errors = [] }) {
+  addSession({ essay, topic = '', material = '', answer = '', rawReview, reviewText = '', rewriteText = '', score, errors = [] }) {
+    const id = Date.now().toString(36);
     this.#data.sessions.unshift({
-      id:      Date.now().toString(36),
-      ts:      Date.now(),
-      type:    'essay',
-      preview: essay.slice(0, 120),
+      id,
+      ts: Date.now(),
+      type: 'essay',
+      preview: (topic || essay).slice(0, 120),
+      topic,
+      material,
+      answer,
       essay,
-      score:   score ?? null,
+      score: score ?? null,
       rawReview,
+      reviewText: reviewText || rawReview || '',
+      rewriteText,
     });
     if (this.#data.sessions.length > 30) this.#data.sessions.length = 30;
     for (const e of errors) {
       this.#data.errFreq[e] = (this.#data.errFreq[e] || 0) + 1;
     }
     StorageService.saveMemory(this.#data);
+    return id;
+  }
+
+  updateEssayRewrite(id, rewriteText) {
+    if (!id) return;
+    const session = this.#data.sessions.find(s => s.id === id && (s.type === 'essay' || !s.type));
+    if (!session) return;
+    session.rewriteText = rewriteText || '';
+    StorageService.saveMemory(this.#data);
+  }
+
+  addInterview({ jobType, question, answer, reviewText }) {
+    this.#data.sessions.unshift({
+      id: Date.now().toString(36),
+      ts: Date.now(),
+      type: 'interview',
+      preview: question.slice(0, 120),
+      jobType,
+      question,
+      answer,
+      reviewText,
+    });
+    if (this.#data.sessions.length > 60) this.#data.sessions.length = 60;
+    StorageService.saveMemory(this.#data);
+  }
+
+  addFavoritePolicy(item) {
+    if (!item) return;
+    this.#data.favorites = this.#data.favorites || [];
+    const existing = this.#data.favorites.find(x => x.id === item.id);
+    const favorite = {
+      id: item.id,
+      ts: Date.now(),
+      type: 'policy',
+      title: item.title,
+      date: item.date,
+      tag: item.tag,
+      summary: item.summary,
+      background: item.background,
+      significance: item.significance,
+      essayAngle: item.essayAngle,
+      interviewQuestion: item.interviewQuestion,
+      quote: item.quote,
+      memory: item.memory,
+    };
+    if (existing) Object.assign(existing, favorite);
+    else this.#data.favorites.unshift(favorite);
+    if (this.#data.favorites.length > 30) this.#data.favorites.length = 30;
+    StorageService.saveMemory(this.#data);
+  }
+
+  addGeneratedPolicy(item) {
+    if (!item) return null;
+    this.#data.generatedPolicies = this.#data.generatedPolicies || [];
+    const policy = {
+      ...item,
+      id: item.id || `policy-${Date.now().toString(36)}`,
+      ts: item.ts || Date.now(),
+      tag: item.tag || '今日更新',
+      type: 'generated-policy',
+    };
+    this.#data.generatedPolicies = this.#data.generatedPolicies.filter(x => x.id !== policy.id);
+    this.#data.generatedPolicies.unshift(policy);
+    if (this.#data.generatedPolicies.length > 50) this.#data.generatedPolicies.length = 50;
+    StorageService.saveMemory(this.#data);
+    return policy;
+  }
+
+  getGeneratedPolicies() {
+    return [...(this.#data.generatedPolicies || [])];
   }
 
   addNewsSummary({ fileName, summary }) {
@@ -540,38 +878,49 @@ class MemoryService {
 
   // Returns a prompt snippet with the student's history for the AI to use
   buildContextPrompt() {
-    const { sessions, errFreq } = this.#data;
-    if (!sessions.length) return '';
+    const essaySessions = (this.#data.sessions || []).filter(s => s.type === 'essay' || !s.type);
+    const { errFreq } = this.#data;
+    if (!essaySessions.length) return '';
 
-    const avg = Math.round(sessions.reduce((s, r) => s + (r.score || 0), 0) / sessions.length);
+    const avg = Math.round(essaySessions.reduce((s, r) => s + (r.score || 0), 0) / essaySessions.length);
     const topErrors = Object.entries(errFreq)
       .sort((a, b) => b[1] - a[1]).slice(0, 6)
       .map(([e, n]) => `- ${e}（已出现 ${n} 次）`).join('\n');
 
     const lines = [
       '【该学生历史学习记录——请据此有针对性地批改】',
-      `共提交批改 ${sessions.length} 次，近期平均分约 ${avg} 分`,
+      `共提交批改 ${essaySessions.length} 次，近期平均分约 ${avg} 分`,
     ];
     if (topErrors) lines.push(`以下高频错误请在本次批改中重点提醒：\n${topErrors}`);
     return lines.join('\n');
   }
 
   getSessions()  { return [...this.#data.sessions]; }
+  getFavorites() { return [...(this.#data.favorites || [])]; }
   getTopErrors() {
     return Object.entries(this.#data.errFreq).sort((a, b) => b[1] - a[1]).slice(0, 15);
   }
-  clear()        { this.#data = { sessions: [], errFreq: {} }; StorageService.clearMemory(); }
+  clear()        { this.#data = { sessions: [], errFreq: {}, favorites: [], generatedPolicies: [] }; StorageService.clearMemory(); }
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   FileParser — TXT / PDF / DOCX → 纯文本
+   FileParser — TXT / PDF / DOCX / Image → 纯文本
 ═══════════════════════════════════════════════════════════════ */
 class FileParser {
   static async parse(file) {
     const ext = file.name.split('.').pop().toLowerCase();
-    const map = { txt: this.#txt, pdf: this.#pdf, docx: this.#docx };
+    const map = {
+      txt: this.#txt,
+      pdf: this.#pdf,
+      docx: this.#docx,
+      jpg: this.#image,
+      jpeg: this.#image,
+      png: this.#image,
+      webp: this.#image,
+      bmp: this.#image
+    };
     const fn  = map[ext];
-    if (!fn) throw new Error(`不支持 .${ext} 格式，请使用 TXT、PDF 或 DOCX`);
+    if (!fn) throw new Error(`不支持 .${ext} 格式，请使用 TXT、PDF、DOCX 或常见图片格式`);
     return fn.call(this, file);
   }
 
@@ -654,6 +1003,19 @@ class FileParser {
     if (!res.value) throw new Error('DOCX 内容为空或格式不支持');
     return res.value;
   }
+
+  static async #image(file) {
+    if (!window.Tesseract) throw new Error('图片文字识别库未加载，请检查网络后刷新页面');
+    const result = await Tesseract.recognize(file, 'chi_sim+eng');
+    const text = result?.data?.text?.trim() || '';
+    if (!text) throw new Error('未识别出文字，请换一张更清晰的照片或手动输入');
+    return text;
+  }
+
+  static isImage(file) {
+    const ext = file.name.split('.').pop().toLowerCase();
+    return ['jpg', 'jpeg', 'png', 'webp', 'bmp'].includes(ext) || file.type.startsWith('image/');
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -670,10 +1032,31 @@ class ReviewParser {
       return m ? m[1].trim() : '';
     };
 
-    const errRaw = sect('错题记录');
-    const errors = errRaw.split('\n').map(l => l.replace(/^[\-•·]\s*/, '').trim()).filter(Boolean);
+    const errRaw = sect('扣分原因') || sect('错题记录');
+    const errors = errRaw.split('\n').map(l => l.replace(/^[\-•·]\s*/, '').trim()).filter(Boolean).slice(0, 6);
+    const dimensionsRaw = sect('各维度评分');
+    const dimensionScores = ['审题立意', '要点覆盖', '逻辑结构', '语言表达'].map(name => {
+      const re = new RegExp(`${name}[：:]\\s*(\\d{1,3})`);
+      const m = dimensionsRaw.match(re);
+      return { name, score: m ? Math.min(25, Math.max(0, parseInt(m[1]))) : null };
+    });
 
-    return { score, strengths: sect('优点'), weaknesses: sect('主要问题'), feedback: sect('批改意见'), errors, raw: text };
+    return {
+      score,
+      dimensionScores,
+      thesis: sect('审题立意'),
+      coverage: sect('要点覆盖'),
+      structure: sect('逻辑结构'),
+      language: sect('语言表达'),
+      deductions: sect('扣分原因'),
+      advice: sect('修改建议'),
+      rewrite: sect('高分改写版'),
+      strengths: sect('优点'),
+      weaknesses: sect('主要问题'),
+      feedback: sect('批改意见'),
+      errors,
+      raw: text
+    };
   }
 
   static scoreLabel(s) {
@@ -725,23 +1108,145 @@ class ApiService {
     ]);
   }
 
-  static summarizeNews(key, text) {
-    const sys = `你是时政分析专家，帮助备考公务员的学生提炼时政要点。
-请对材料按以下三部分输出，每部分用中文标题标识，内容要简洁干净：
+  static generateEssayRewrite(key, essayContext, reviewText = '') {
+    const sys = `你是专业申论提分导师。请根据题目、材料、考生答案和批改意见，生成一版可直接参考的高分改写。
+要求：
+只输出改写正文，不要输出评分、分析、标题解释或客套话。
+保留题意和材料核心要点，结构清晰，表达规范，有机关文风。
+不得使用 # * - 等 Markdown 符号。`;
+    return this.#post(key, [
+      { role: 'system', content: sys },
+      { role: 'user', content: `【题目、材料与原答案】\n${essayContext}\n\n【已有批改意见】\n${reviewText}` },
+    ]);
+  }
 
-一、核心要点
-用2-3句话概括事件或政策的核心内容。
+  static generateInterviewQuestion(key, jobType, policyContext = '') {
+    const sys = `你是公务员结构化面试命题老师。请根据岗位类型和给定时政材料生成一道高质量结构化面试题。
+要求：
+题目贴近岗位职责、基层治理真实场景和给定时政主题。
+只输出题目正文，不要输出解析、参考答案或多余寒暄。
+不得使用 # * - 等 Markdown 符号。`;
+    return this.#post(key, [
+      { role: 'system', content: sys },
+      { role: 'user', content: `岗位类型：${jobType}\n\n时政材料：${policyContext || '无指定时政，请按岗位职责生成。'}` },
+    ]);
+  }
 
-二、关键数据与表述
-列出重要数字、官方表述或金句，每条一行，直接写内容。
+  static reviewInterviewAnswer(key, jobType, question, answer) {
+    const sys = `你是公务员结构化面试考官和陪练老师。请点评考生回答，严格按以下格式输出：
 
-三、申论应用
-说明可用于哪类申论题目，并给出一个可直接套用的申论句式。
+【内容完整度】
+指出是否回应题干、是否覆盖关键任务。
 
-严格禁止：不得使用 * ** # ## 等任何 Markdown 符号，不得加粗，不得用井号标题，只用纯文字和中文标点。`;
+【逻辑结构】
+评价层次、顺序、重点是否清楚。
+
+【表达流畅度】
+评价语言是否自然、简洁、可现场表达。
+
+【机关表达】
+指出是否体现公务员岗位意识、群众观念、依法依规、协同落实等表达。
+
+【改进建议】
+给出3条以内最值得修改的建议。
+
+【参考答案】
+给出一版可以现场作答的参考答案，控制在500字以内。
+
+严格禁止：不得使用 # * - 等 Markdown 符号，不得加粗，不得用井号标题，只用纯文字和中文标点。`;
+    return this.#post(key, [
+      { role: 'system', content: sys },
+      { role: 'user', content: `【岗位类型】\n${jobType}\n\n【面试题】\n${question}\n\n【考生回答】\n${answer}` },
+    ]);
+  }
+
+  static summarizePolicyNews(key, text) {
+    const sys = `你是时政精读老师，帮助备考公务员的学生把时政材料转化为申论和面试素材。
+请严格按以下格式输出：
+
+【事件概括】
+用2到3句话概括事件、政策或治理动作。
+
+【政策背景】
+说明背后的政策导向、现实问题和治理目标。
+
+【申论可用角度】
+给出可用于申论写作的分析角度和分论点。
+
+【面试可能问法】
+设计2个可能出现的结构化面试问法。
+
+【可背诵金句】
+给出3句以内可直接背诵的规范表达。
+
+【100字速记版】
+用约100字总结，便于考前记忆。
+
+严格禁止：不得使用 # * - 等 Markdown 符号，不得加粗，不得用井号标题，只用纯文字和中文标点。`;
     return this.#post(key, [
       { role: 'system', content: sys },
       { role: 'user',   content: text },
+    ]);
+  }
+
+  static generatePolicyCard(key, text) {
+    const sys = `你是公务员考试时政教研老师。请把用户粘贴的新闻或政策材料，提炼成一条“今日时政”学习卡片。
+请严格按以下格式输出：
+
+【标题】
+不超过18个字，准确概括主题。
+
+【标签】
+4到8个字，例如高质量发展、基层治理、民生保障、科技创新。
+
+【100字摘要】
+约100字，概括事件、政策动作和核心价值。
+
+【政策背景】
+说明政策语境、现实问题和治理目标。
+
+【申论可用角度】
+给出可用于申论写作的主题、分论点和分析角度。
+
+【面试可能问法】
+设计1到2个结构化面试问法。
+
+【可背诵金句】
+给出2到3句规范表达。
+
+【100字速记版】
+用约100字压缩成考前可背版本。
+
+严格禁止：不得使用 # * - 等 Markdown 符号，不得输出寒暄，不得编造具体时间、地点或数据。`;
+    return this.#post(key, [
+      { role: 'system', content: sys },
+      { role: 'user', content: text },
+    ]);
+  }
+
+  static generatePodcastScript(key, text) {
+    const sys = `你是中文公考学习播客的脚本策划。请根据时政材料生成一段约3分钟的中文双人播客脚本。
+请严格按以下格式输出：
+
+主持人A：
+围绕主题开场，点出热点背景。
+
+主持人B：
+解释为什么重要，说明政策意义和现实价值。
+
+主持人A：
+说明申论怎么用，可用于哪些文章主题和分论点。
+
+主持人B：
+说明面试怎么答，提出可能问法和作答切入点。
+
+主持人A：
+输出最后一句速记总结。
+
+要求：必须多轮对话，至少按“主持人A：主持人B：主持人A：主持人B：”交替输出；内容必须覆盖热点背景、为什么重要、申论怎么用、面试怎么答、最后一句速记总结；口语化但不松散，适合直接录制；不要生成真实音频；不得使用 # * - 等 Markdown 符号。`;
+    return this.#post(key, [
+      { role: 'system', content: sys },
+      { role: 'user', content: text },
     ]);
   }
 
@@ -750,7 +1255,7 @@ class ApiService {
     return text
       .replace(/#{1,6}\s*/g, '')          // ## headers
       .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1')  // *bold* **bold** ***bold***
-      .replace(/^[\*\-]\s+/gm, '• ')      // bullet * or - → •
+      .replace(/^[\*\-]\s+/gm, '')        // remove Markdown list markers
       .replace(/`{1,3}[^`]*`{1,3}/g, s => s.replace(/`/g, ''))  // inline code
       .replace(/\n{3,}/g, '\n\n')         // collapse excessive blank lines
       .trim();
@@ -770,24 +1275,31 @@ class ApiService {
 
 SCORE: [0-100 整数]
 
-【优点】
-- 优点一（具体说明，引用原文）
-- 优点二（具体说明）
+【审题立意】
+评价是否准确理解题干任务、身份、对象和核心立意。
 
-【主要问题】
-- 最严重问题（引用原文具体句子）
-- 次要问题（引用原文）
+【要点覆盖】
+评价材料要点提取是否全面，指出缺失要点。
 
-【批改意见】
-只针对最严重的 1-2 个问题给出改写建议：
-原句：xxx
-改写：xxx
-原因：（一句话，说明为何这样改更符合阅卷标准）
+【逻辑结构】
+评价总分结构、段落层次、衔接和重点安排。
 
-【错题记录】
-- [10字以内描述需记入错题本的核心错误]
+【语言表达】
+评价规范性、简洁性、机关表达和病句问题。
 
-注意：语气像学长/学姐，严格但温和；每次只深入批改最突出的 1-2 个问题。`;
+【各维度评分】
+审题立意：0-25分，说明一句话
+要点覆盖：0-25分，说明一句话
+逻辑结构：0-25分，说明一句话
+语言表达：0-25分，说明一句话
+
+【扣分原因】
+列出主要扣分点，每行一个，控制在6条以内。
+
+【修改建议】
+给出可执行的修改建议，优先处理最影响得分的问题。
+
+注意：语气严格但温和；不要使用 # * - 等 Markdown 符号，不要加粗，不要用井号标题，只用纯文本和中文标点。`;
     return ctx ? `${base}\n\n${ctx}` : base;
   }
 }
@@ -832,8 +1344,66 @@ class App {
   #materials   = [];       // { id, name, content }
   #newsText    = '';
   #newsFileName = '';
+  #interviewQuestion = '';
+  #mediaRecorder = null;
+  #recordChunks = [];
+  #recordStream = null;
+  #recordTimer = null;
+  #recordStartedAt = 0;
+  #recordAudioUrl = '';
   #essayText   = '';       // last submitted essay
   #lastReview  = null;     // ReviewParser result
+  #currentView = 'essayForm';
+  #reviewResult = null;
+  #rewriteResult = '';
+  #isReviewCollapsed = false;
+  #isRewriting = false;
+  #currentEssaySessionId = '';
+  #currentPolicyId = '';
+  #podcastSourcePolicy = null;
+  #interviewSourcePolicy = null;
+  #essaySourcePolicy = null;
+  #policyNews = [
+    {
+      id: 'new-quality-productivity',
+      title: '新质生产力',
+      date: '2026-06-11',
+      tag: '高质量发展',
+      summary: '新质生产力强调以科技创新推动产业创新，代表先进生产力的发展方向。它要求以数字技术、绿色技术和高端制造培育新动能，推动产业链升级、发展方式转型和公共服务提质，是高质量发展的重要抓手，也需要政府优化政策供给和应用场景。',
+      background: '新质生产力是在新一轮科技革命和产业变革背景下提出的重要发展理念，核心是通过原创性、颠覆性科技创新，催生新产业、新模式、新动能。',
+      significance: '新质生产力关系现代化产业体系建设和高质量发展全局，有助于突破传统增长路径依赖，提升产业竞争力、资源配置效率和发展可持续性。',
+      essayAngle: '可用于高质量发展、科技创新、产业升级、人才强国等主题。申论写作中可从创新驱动、数字赋能、绿色转型和制度供给四个角度展开。',
+      interviewQuestion: '请结合实际谈谈，基层政府应如何服务新质生产力发展？',
+      quote: '以科技创新塑造发展新动能，以产业升级拓展发展新空间。',
+      memory: '新质生产力的核心是创新，关键在产业，落点在高质量发展。答题时可围绕科技创新、人才支撑、产业升级、绿色转型展开，突出政府服务、制度保障和场景应用。'
+    },
+    {
+      id: 'modern-grassroots-governance',
+      title: '基层治理现代化',
+      date: '2026-06-10',
+      tag: '基层治理',
+      summary: '基层治理现代化强调党建引领、多元参与、数字赋能和精细服务。它通过网格化管理、数据协同、群众参与和资源下沉，提升基层发现问题、解决问题、服务群众的能力，是国家治理现代化的重要基础，也能增强群众获得感和政策落地效率。',
+      background: '基层是政策落实和服务群众的最后一公里。随着社会结构和群众需求变化，基层治理需要从粗放管理转向精准服务、协同治理和智慧治理。',
+      significance: '基层治理现代化能够把制度优势转化为治理效能，提升公共服务响应速度，化解矛盾在基层，推动群众诉求有人管、问题闭环能落实。',
+      essayAngle: '可用于基层治理、群众路线、数字政府、公共服务等主题。可围绕共建共治共享、网格化治理、数据协同和民生服务精准化展开。',
+      interviewQuestion: '如果你所在街道要提升基层治理效能，你会从哪些方面推进？',
+      quote: '基层治理的温度，来自服务群众的精度；治理体系的效能，体现在解决问题的速度。',
+      memory: '基层治理现代化要抓住党建引领、多元共治、数字赋能、服务下沉四个关键词。申论可写体系建设，面试可谈问题发现、资源整合和闭环落实。'
+    },
+    {
+      id: 'silver-economy',
+      title: '银发经济',
+      date: '2026-06-09',
+      tag: '民生经济',
+      summary: '银发经济围绕老年群体多层次需求，发展养老服务、健康管理、适老化产品和智慧养老。它既是积极应对人口老龄化的重要举措，也是扩大内需、改善民生、优化公共服务和培育新产业的结合点，推动养老从保障型向品质型升级。',
+      background: '人口老龄化带来养老、医疗、照护和精神文化等多方面需求，也催生服务消费和产业升级空间。发展银发经济需要政府引导、市场供给和社会参与协同发力。',
+      significance: '银发经济既回应老年群体对高质量生活的期待，也能带动养老服务、医疗健康、智能产品等产业发展，实现民生改善和扩大内需的统一。',
+      essayAngle: '可用于民生保障、养老服务、扩大内需、社会治理等主题。可从供给优化、普惠服务、产业融合和适老化改造角度展开。',
+      interviewQuestion: '面对人口老龄化趋势，政府应如何推动银发经济健康发展？',
+      quote: '让老年人共享发展成果，让银发经济成为民生温度与发展活力的结合点。',
+      memory: '银发经济一头连着民生福祉，一头连着消费潜力。答题可从养老服务供给、适老化改造、智慧养老、监管规范和普惠可及五方面展开。'
+    }
+  ];
   #selText    = null;     // text selected in center panel
   #toastTimer = null;
 
@@ -847,6 +1417,7 @@ class App {
     this.#setupPdfWorker();
     this.#bindEvents();
     this.#loadSettingsValues();
+    this.#showHome();
   }
 
   // ── Setup ────────────────────────────────────────────────────────────────
@@ -861,6 +1432,24 @@ class App {
   #loadSettingsValues() {
     const k = StorageService.getApiKey();
     if (k) document.getElementById('settings-key').value = k;
+    this.#refreshPodcastOptions();
+  }
+
+  #allPolicyNews() {
+    const generated = this.#memory.getGeneratedPolicies();
+    const generatedIds = new Set(generated.map(item => item.id));
+    return [...generated, ...this.#policyNews.filter(item => !generatedIds.has(item.id))];
+  }
+
+  #refreshPodcastOptions() {
+    const select = document.getElementById('podcast-policy');
+    if (!select) return;
+    const current = select.value;
+    const options = this.#allPolicyNews().map(item =>
+      `<option value="${this.#esc(item.id)}">${this.#esc(item.title)}</option>`
+    ).join('');
+    select.innerHTML = options;
+    if (current && this.#allPolicyNews().some(item => item.id === current)) select.value = current;
   }
 
   // ── Event binding ─────────────────────────────────────────────────────────
@@ -879,27 +1468,57 @@ class App {
     // History overlay
     this.#on('btn-close-history', () => this.#closeOverlay('history-overlay'));
 
+    // Policy update overlay
+    this.#on('btn-close-policy-update', () => this.#closeOverlay('policy-update-overlay'));
+    this.#on('btn-generate-policy-card', () => this.#generatePolicyCardFromInput());
+
     // Feature tabs
     document.querySelectorAll('.feature-tab').forEach(btn =>
-      btn.addEventListener('click', () => this.#switchTab(btn.dataset.tab))
+      btn.addEventListener('click', () => this.#openHomeFeature(btn.dataset.tab))
+    );
+    document.querySelectorAll('.btn-back-home').forEach(btn =>
+      btn.addEventListener('click', () => this.#showHome())
+    );
+    document.querySelectorAll('.bottom-nav-btn').forEach(btn =>
+      btn.addEventListener('click', () => this.#openBottomNav(btn.dataset.nav))
     );
 
-    // Material upload
-    this.#onFile('material-input', files => this.#uploadMaterials(files));
-
     // Essay
+    this.#onFile('essay-topic-input', files => this.#loadEssayFieldFile('topic', files[0]));
+    this.#onFile('essay-material-input', files => this.#loadEssayFieldFile('material', files[0]));
     this.#onFile('essay-input', files => this.#loadEssayFile(files[0]));
+    document.getElementById('essay-topic').addEventListener('input', () => this.#onEssayInput());
+    document.getElementById('essay-material').addEventListener('input', () => this.#onEssayInput());
     document.getElementById('essay-textarea').addEventListener('input', () => this.#onEssayInput());
     this.#on('btn-submit-essay', () => this.#submitEssay());
+    this.#on('review-float-card', () => this.#expandReviewResult());
+
+    // Interview
+    this.#on('btn-generate-interview', () => this.#generateInterviewQuestion());
+    this.#on('btn-start-recording', () => this.#startInterviewRecording());
+    this.#on('btn-stop-recording', () => this.#stopInterviewRecording());
+    this.#on('btn-clear-recording', () => this.#clearInterviewRecording());
+    document.getElementById('interview-answer').addEventListener('input', () => this.#onInterviewAnswerInput());
+    this.#on('btn-review-interview', () => this.#reviewInterviewAnswer());
 
     // News
     this.#onFile('news-input', files => this.#loadNewsFile(files[0]));
+    document.getElementById('news-textarea').addEventListener('input', () => this.#onNewsInput());
     this.#on('btn-submit-news', () => this.#submitNews());
+
+    // Podcast
+    this.#on('btn-submit-podcast', () => this.#submitPodcast());
+    document.getElementById('podcast-policy').addEventListener('change', () => this.#onPodcastPolicyChange());
 
     // Revision mode
     this.#on('btn-exit-revision',       () => this.#exitRevision());
     this.#on('btn-resubmit-revision',   () => this.#resubmitRevision());
     this.#on('float-toggle',            () => this.#toggleFloat());
+    document.getElementById('float-handle').addEventListener('click', e => {
+      if (e.target.id !== 'float-toggle' && document.getElementById('float-win').classList.contains('review-chip')) {
+        this.#toggleFloat();
+      }
+    });
 
     // Float drag
     DragManager.bind(document.getElementById('float-win'), document.getElementById('float-handle'));
@@ -996,32 +1615,103 @@ class App {
 
   // ── Essay ─────────────────────────────────────────────────────────────────
 
+  async #loadEssayFieldFile(kind, file) {
+    if (!file) return;
+    const isImage = FileParser.isImage(file);
+    const config = {
+      topic: {
+        inputId: 'essay-topic-input',
+        textareaId: 'essay-topic',
+        label: '题目',
+        loading: '正在识别题目照片，请稍候…',
+        reminder: '题目照片识别可能存在错字，请先核对题干和作答要求。'
+      },
+      material: {
+        inputId: 'essay-material-input',
+        textareaId: 'essay-material',
+        label: '材料',
+        loading: '正在识别材料照片，请稍候…',
+        reminder: '材料照片识别可能存在漏行、错字或段落错位，请先核对材料内容。'
+      }
+    }[kind];
+    if (!config) return;
+
+    try {
+      if (isImage) this.#setCenterLoading(config.loading);
+      const text = await FileParser.parse(file);
+      document.getElementById(config.textareaId).value = text;
+      this.#onEssayInput();
+      if (isImage) {
+        this.#setCenter(`
+          <div class="review-section">
+            <div class="review-section-title">${this.#esc(config.label)}照片识别结果 · ${this.#esc(file.name)}</div>
+            <div class="review-section-body">${this.#esc(text)}</div>
+          </div>
+          <div class="review-section">
+            <div class="review-section-title">提交前提醒</div>
+            <div class="review-section-body">${this.#esc(config.reminder)}</div>
+          </div>
+        `);
+        this.#toast(`${config.label}照片已识别，请先校对文字`);
+      } else {
+        this.#toast(`已加载${config.label}文件：${file.name}`);
+      }
+    } catch (e) {
+      if (isImage) this.#showPlaceholder();
+      this.#toast(`${config.label}上传失败：${e.message}`);
+    }
+    document.getElementById(config.inputId).value = '';
+  }
+
   async #loadEssayFile(file) {
     if (!file) return;
+    const isImage = FileParser.isImage(file);
     try {
+      if (isImage) this.#setCenterLoading('正在识别手写中文答案照片，请稍候…');
       const text = await FileParser.parse(file);
       document.getElementById('essay-textarea').value = text;
       this.#onEssayInput();
-      this.#toast(`已加载：${file.name}`);
+      if (isImage) {
+        this.#setCenter(`
+          <div class="review-section">
+            <div class="review-section-title">照片识别结果 · ${this.#esc(file.name)}</div>
+            <div class="review-section-body">${this.#esc(text)}</div>
+          </div>
+          <div class="review-section">
+            <div class="review-section-title">提交前提醒</div>
+            <div class="review-section-body">手写识别可能存在错字、漏字或段落错位。请先在右侧文本框校对，再点击提交批改。</div>
+          </div>
+        `);
+        this.#toast('照片已识别，请先校对文字');
+      } else {
+        this.#toast(`已加载：${file.name}`);
+      }
     } catch (e) {
+      if (isImage) this.#showPlaceholder();
       this.#toast(e.message);
     }
     document.getElementById('essay-input').value = '';
   }
 
   #onEssayInput() {
+    const topicLen = document.getElementById('essay-topic').value.trim().length;
+    const materialLen = document.getElementById('essay-material').value.trim().length;
     const len = document.getElementById('essay-textarea').value.trim().length;
     document.getElementById('essay-wc').textContent = `${len} 字`;
-    document.getElementById('btn-submit-essay').disabled = len === 0;
+    document.getElementById('btn-submit-essay').disabled = topicLen === 0 || materialLen === 0 || len === 0;
   }
 
   async #submitEssay() {
-    const essay = document.getElementById('essay-textarea').value.trim();
-    if (!essay) return;
+    const topic = document.getElementById('essay-topic').value.trim();
+    const material = document.getElementById('essay-material').value.trim();
+    const answer = document.getElementById('essay-textarea').value.trim();
+    if (!topic || !material || !answer) return;
     const key = this.#key;
     if (!key) return;
 
+    const essay = this.#buildEssayContext();
     this.#essayText = essay;
+    this.#currentView = 'essayForm';
     this.#setBtnLoading('btn-submit-essay', true, '批改中…');
     this.#setCenterLoading('AI导师正在批改，请稍候…');
 
@@ -1030,16 +1720,32 @@ class App {
       const raw = await ApiService.reviewEssay(key, essay, ctx);
       const parsed = ReviewParser.parse(raw);
       this.#lastReview = parsed;
-      this.#memory.addSession({ essay, rawReview: raw, score: parsed.score, errors: parsed.errors });
+      this.#reviewResult = parsed;
+      this.#rewriteResult = '';
+      this.#isReviewCollapsed = false;
+      this.#currentView = 'reviewResult';
+      this.#currentEssaySessionId = this.#memory.addSession({
+        essay,
+        topic,
+        material,
+        answer,
+        rawReview: raw,
+        reviewText: ApiService.cleanMarkdown(raw),
+        rewriteText: '',
+        score: parsed.score,
+        errors: parsed.errors
+      });
       this.#renderReview(parsed);
     } catch (e) {
       this.#setCenterError(`批改失败：${e.message}`);
     } finally {
-      this.#setBtnLoading('btn-submit-essay', false, '提交批改');
+      this.#setBtnLoading('btn-submit-essay', false, '开始批改');
     }
   }
 
   #renderReview(p) {
+    this.#enterReviewLayout();
+    this.#hideReviewFloat();
     const sc = p.score !== null;
     const col = ReviewParser.scoreClass(p.score);
     const lbl = ReviewParser.scoreLabel(p.score);
@@ -1050,37 +1756,141 @@ class App {
         <div class="score-label">${lbl}</div>
       </div>` : '';
 
+    const dims = (p.dimensionScores || []).map(d => `
+      <div class="dimension-card">
+        <div class="dimension-name">${this.#esc(d.name)}</div>
+        <div class="dimension-score">${d.score === null ? '—' : `${d.score}`}</div>
+      </div>
+    `).join('');
+
     const sec = (title, content) => content ? `
       <div class="review-section">
         <div class="review-section-title">${title}</div>
         <div class="review-section-body">${this.#esc(content)}</div>
       </div>` : '';
 
-    const errHtml = p.errors.length
-      ? sec('已记入错题本', p.errors.map(e => `• ${e}`).join('\n'))
-      : '';
+    const rewriteHtml = this.#rewriteResult
+      ? this.#esc(this.#rewriteResult)
+      : '<span class="rewrite-empty">点击“生成改写”后，这里会显示 AI 生成的高分改写版。</span>';
 
     this.#setCenter(`
       <div id="review-wrap">
         ${scoreHtml}
-        ${sec('优点', p.strengths)}
-        ${sec('主要问题', p.weaknesses)}
-        ${sec('批改意见', p.feedback)}
-        ${errHtml}
+        ${dims ? `<div class="dimension-grid">${dims}</div>` : ''}
+        ${sec('审题立意', p.thesis || p.strengths)}
+        ${sec('要点覆盖', p.coverage)}
+        ${sec('逻辑结构', p.structure)}
+        ${sec('语言表达', p.language)}
+        ${sec('扣分原因', p.deductions || p.weaknesses)}
+        ${sec('修改建议', p.advice || p.feedback)}
+        ${!(p.deductions || p.weaknesses || p.advice || p.feedback) ? sec('AI批改结果', ApiService.cleanMarkdown(p.raw)) : ''}
         <div class="review-actions">
-          <button class="btn-revise"      id="btn-goto-revise">✏️ 回去改正</button>
+          <button class="btn-revise" id="btn-generate-rewrite">${this.#isRewriting ? '生成中…' : (this.#rewriteResult ? '重新生成改写' : '生成改写')}</button>
+          <button class="btn-clear-essay" id="btn-back-essay-form">返回修改</button>
           <button class="btn-clear-essay" id="btn-clear-essay">清空重写</button>
+        </div>
+        <div class="rewrite-card">
+          <div class="rewrite-card-title">高分改写</div>
+          <div class="review-section-body">${rewriteHtml}</div>
         </div>
       </div>
     `);
 
-    document.getElementById('btn-goto-revise').onclick = () => this.#enterRevision();
+    document.getElementById('btn-generate-rewrite').onclick = () => this.#generateRewrite();
+    document.getElementById('btn-back-essay-form').onclick = () => this.#backToEssayForm();
     document.getElementById('btn-clear-essay').onclick = () => {
+      document.getElementById('essay-topic').value = '';
+      document.getElementById('essay-material').value = '';
       document.getElementById('essay-textarea').value = '';
       this.#onEssayInput();
+      this.#currentView = 'essayForm';
+      this.#reviewResult = null;
+      this.#rewriteResult = '';
+      this.#isReviewCollapsed = false;
+      this.#currentEssaySessionId = '';
+      this.#hideReviewFloat();
       this.#showPlaceholder();
       this.#toast('已清空，可重新作答');
     };
+  }
+
+  async #generateRewrite() {
+    if (!this.#reviewResult || this.#isRewriting) return;
+    const key = this.#key;
+    if (!key) return;
+
+    this.#isRewriting = true;
+    this.#isReviewCollapsed = false;
+    this.#renderReview(this.#reviewResult);
+
+    try {
+      const result = await ApiService.generateEssayRewrite(key, this.#buildEssayContext(), this.#reviewResult.raw);
+      this.#rewriteResult = ApiService.cleanMarkdown(result);
+      this.#memory.updateEssayRewrite(this.#currentEssaySessionId, this.#rewriteResult);
+      this.#isReviewCollapsed = true;
+      this.#showReviewFloat();
+      this.#renderRewriteOnly();
+      this.#toast('高分改写已生成');
+    } catch (e) {
+      this.#toast(`生成改写失败：${e.message}`);
+      this.#renderReview(this.#reviewResult);
+    } finally {
+      this.#isRewriting = false;
+      if (!this.#isReviewCollapsed) this.#renderReview(this.#reviewResult);
+    }
+  }
+
+  #renderRewriteOnly() {
+    this.#enterReviewLayout();
+    this.#setCenter(`
+      <div class="rewrite-card">
+        <div class="rewrite-card-title">高分改写</div>
+        <div class="review-section-body">${this.#esc(this.#rewriteResult)}</div>
+      </div>
+    `);
+  }
+
+  #expandReviewResult() {
+    if (!this.#reviewResult) return;
+    this.#isReviewCollapsed = false;
+    this.#hideReviewFloat();
+    this.#renderReview(this.#reviewResult);
+  }
+
+  #showReviewFloat() {
+    const card = document.getElementById('review-float-card');
+    document.getElementById('review-float-score').textContent = this.#reviewResult?.score ?? '—';
+    card.style.display = 'block';
+    document.getElementById('main-view').classList.add('review-collapsed');
+  }
+
+  #hideReviewFloat() {
+    document.getElementById('review-float-card').style.display = 'none';
+    document.getElementById('main-view').classList.remove('review-collapsed');
+  }
+
+  #enterReviewLayout() {
+    document.getElementById('main-view').classList.add('review-mode');
+  }
+
+  #exitReviewLayout() {
+    document.getElementById('main-view').classList.remove('review-mode', 'review-collapsed');
+    this.#hideReviewFloat();
+  }
+
+  #backToEssayForm() {
+    this.#currentView = 'essayForm';
+    this.#isReviewCollapsed = false;
+    this.#exitReviewLayout();
+    this.#switchTab('essay');
+    this.#toast('已返回申论表单，可继续修改后重新批改');
+  }
+
+  #buildEssayContext() {
+    const topic = document.getElementById('essay-topic').value.trim();
+    const material = document.getElementById('essay-material').value.trim();
+    const answer = document.getElementById('essay-textarea').value.trim();
+    return `【题目】\n${topic}\n\n【材料】\n${material}\n\n【考生答案】\n${answer}`;
   }
 
   // ── Revision mode ─────────────────────────────────────────────────────────
@@ -1088,14 +1898,15 @@ class App {
   #enterRevision() {
     if (!this.#lastReview) return;
     const rv = document.getElementById('revision-textarea');
-    rv.value = this.#essayText;
-    document.getElementById('float-body').textContent = this.#lastReview.raw;
+    rv.value = this.#lastReview.rewrite || this.#essayText;
+    document.getElementById('float-body').textContent = ApiService.cleanMarkdown(this.#lastReview.raw);
     const fw = document.getElementById('float-win');
-    fw.style.left = ''; fw.style.top = ''; fw.style.right = '28px'; fw.style.bottom = '28px';
-    fw.classList.remove('minimized');
-    document.getElementById('float-toggle').textContent = '─';
+    fw.style.left = ''; fw.style.top = ''; fw.style.right = ''; fw.style.bottom = '';
+    fw.classList.add('review-chip', 'minimized');
+    document.getElementById('float-toggle').textContent = '□';
     document.getElementById('main-view').style.display    = 'none';
     document.getElementById('revision-view').style.display = 'flex';
+    this.#toast('已载入高分改写，右上角可查看原批改结果');
     rv.focus();
   }
 
@@ -1145,6 +1956,182 @@ class App {
     btn.textContent = fw.classList.contains('minimized') ? '□' : '─';
   }
 
+  // ── Interview ─────────────────────────────────────────────────────────────
+
+  #onInterviewAnswerInput() {
+    const len = document.getElementById('interview-answer').value.trim().length;
+    document.getElementById('interview-wc').textContent = `${len} 字`;
+    document.getElementById('btn-review-interview').disabled = !this.#interviewQuestion || len === 0;
+  }
+
+  async #startInterviewRecording() {
+    if (!window.navigator?.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      this.#toast('当前浏览器不支持录音，请改用 Chrome、Edge 或 Safari 新版本');
+      return;
+    }
+    if (this.#mediaRecorder?.state === 'recording') return;
+
+    try {
+      this.#clearInterviewRecording(false);
+      this.#recordStream = await window.navigator.mediaDevices.getUserMedia({ audio: true });
+      this.#recordChunks = [];
+      this.#mediaRecorder = new MediaRecorder(this.#recordStream);
+      this.#mediaRecorder.ondataavailable = e => {
+        if (e.data?.size) this.#recordChunks.push(e.data);
+      };
+      this.#mediaRecorder.onstop = () => this.#finalizeInterviewRecording();
+      this.#mediaRecorder.start();
+      this.#recordStartedAt = Date.now();
+      this.#setRecordingUi(true, '正在录音，请按正常面试节奏作答');
+      this.#recordTimer = setInterval(() => this.#updateRecordingDuration(), 500);
+      this.#updateRecordingDuration();
+    } catch (e) {
+      this.#stopRecordStream();
+      const msg = e.name === 'NotAllowedError'
+        ? '录音失败：请允许浏览器使用麦克风'
+        : `录音失败：${e.message || '无法访问麦克风'}`;
+      this.#toast(msg);
+      this.#setRecordingUi(false, '未开始录音');
+    }
+  }
+
+  #stopInterviewRecording() {
+    if (this.#mediaRecorder?.state === 'recording') {
+      this.#mediaRecorder.stop();
+      this.#setRecordingUi(false, '正在生成录音回放…');
+    }
+  }
+
+  #finalizeInterviewRecording() {
+    clearInterval(this.#recordTimer);
+    this.#recordTimer = null;
+    this.#stopRecordStream();
+
+    if (!this.#recordChunks.length) {
+      this.#setRecordingUi(false, '未获取到有效录音，请重试');
+      return;
+    }
+
+    const type = this.#recordChunks[0]?.type || 'audio/webm';
+    const blob = new Blob(this.#recordChunks, { type });
+    if (this.#recordAudioUrl) URL.revokeObjectURL(this.#recordAudioUrl);
+    this.#recordAudioUrl = URL.createObjectURL(blob);
+
+    const audio = document.getElementById('recording-audio');
+    audio.src = this.#recordAudioUrl;
+    audio.style.display = 'block';
+    document.getElementById('btn-clear-recording').style.display = 'block';
+    this.#setRecordingUi(false, '录音已完成，可回放；请手动粘贴转写文本');
+    this.#toast('录音已完成，请手动粘贴转写文本后点评');
+  }
+
+  #clearInterviewRecording(resetStatus = true) {
+    if (this.#mediaRecorder?.state === 'recording') this.#mediaRecorder.stop();
+    clearInterval(this.#recordTimer);
+    this.#recordTimer = null;
+    this.#recordChunks = [];
+    this.#stopRecordStream();
+    this.#mediaRecorder = null;
+    if (this.#recordAudioUrl) URL.revokeObjectURL(this.#recordAudioUrl);
+    this.#recordAudioUrl = '';
+
+    const audio = document.getElementById('recording-audio');
+    if (audio) {
+      audio.removeAttribute('src');
+      audio.style.display = 'none';
+      audio.load();
+    }
+    const clearBtn = document.getElementById('btn-clear-recording');
+    if (clearBtn) clearBtn.style.display = 'none';
+    if (resetStatus) {
+      document.getElementById('recording-duration').textContent = '00:00';
+      this.#setRecordingUi(false, '未开始录音');
+    }
+  }
+
+  #setRecordingUi(recording, status) {
+    const start = document.getElementById('btn-start-recording');
+    const stop = document.getElementById('btn-stop-recording');
+    start.disabled = recording;
+    stop.disabled = !recording;
+    start.classList.toggle('recording', recording);
+    document.getElementById('recording-status').textContent = status;
+  }
+
+  #updateRecordingDuration() {
+    if (!this.#recordStartedAt) return;
+    const sec = Math.floor((Date.now() - this.#recordStartedAt) / 1000);
+    const mm = String(Math.floor(sec / 60)).padStart(2, '0');
+    const ss = String(sec % 60).padStart(2, '0');
+    document.getElementById('recording-duration').textContent = `${mm}:${ss}`;
+  }
+
+  #stopRecordStream() {
+    this.#recordStream?.getTracks().forEach(track => track.stop());
+    this.#recordStream = null;
+  }
+
+  async #generateInterviewQuestion() {
+    const key = this.#key;
+    if (!key) return;
+
+    const jobType = document.getElementById('interview-job').value;
+    this.#setBtnLoading('btn-generate-interview', true, '生成中…');
+    const box = document.getElementById('interview-question-box');
+    box.textContent = '正在生成结构化面试题…';
+    box.classList.remove('empty');
+
+    try {
+      const policyContext = this.#interviewSourcePolicy ? this.#formatPolicyContext(this.#interviewSourcePolicy) : '';
+      const result = await ApiService.generateInterviewQuestion(key, jobType, policyContext);
+      const question = ApiService.cleanMarkdown(result);
+      this.#interviewQuestion = question;
+      box.textContent = question;
+      box.classList.remove('empty');
+      this.#onInterviewAnswerInput();
+      this.#toast('面试题已生成，请输入回答');
+    } catch (e) {
+      this.#interviewQuestion = '';
+      box.textContent = `面试题生成失败：${e.message}`;
+      box.classList.add('empty');
+      this.#toast(`面试题生成失败：${e.message}`);
+    } finally {
+      this.#setBtnLoading('btn-generate-interview', false, '生成面试题');
+    }
+  }
+
+  async #reviewInterviewAnswer() {
+    const answer = document.getElementById('interview-answer').value.trim();
+    if (!this.#interviewQuestion || !answer) return;
+    const key = this.#key;
+    if (!key) return;
+
+    const jobType = document.getElementById('interview-job').value;
+    this.#setBtnLoading('btn-review-interview', true, '点评中…');
+    this.#setCenterLoading('AI考官正在点评回答…');
+
+    try {
+      const result = await ApiService.reviewInterviewAnswer(key, jobType, this.#interviewQuestion, answer);
+      const clean = ApiService.cleanMarkdown(result);
+      this.#memory.addInterview({ jobType, question: this.#interviewQuestion, answer, reviewText: clean });
+      this.#setCenter(`
+        <div class="review-section">
+          <div class="review-section-title">面试题 · ${this.#esc(jobType)}</div>
+          <div class="review-section-body">${this.#esc(this.#interviewQuestion)}</div>
+        </div>
+        <div class="review-section">
+          <div class="review-section-title">AI点评</div>
+          <div class="review-section-body">${this.#esc(clean)}</div>
+        </div>
+      `);
+    } catch (e) {
+      this.#setCenterError(`面试点评失败：${e.message}`);
+    } finally {
+      this.#setBtnLoading('btn-review-interview', false, 'AI点评');
+      this.#onInterviewAnswerInput();
+    }
+  }
+
   // ── News ──────────────────────────────────────────────────────────────────
 
   async #loadNewsFile(file) {
@@ -1154,7 +2141,8 @@ class App {
       this.#newsFileName = file.name;
       document.getElementById('news-indicator').textContent = `📄 ${file.name}`;
       document.getElementById('news-indicator').style.display = 'block';
-      document.getElementById('btn-submit-news').disabled = false;
+      document.getElementById('news-textarea').value = this.#newsText;
+      this.#onNewsInput();
       this.#toast(`已加载：${file.name}`);
     } catch (e) {
       this.#toast(e.message);
@@ -1162,28 +2150,89 @@ class App {
     document.getElementById('news-input').value = '';
   }
 
+  #onNewsInput() {
+    const text = document.getElementById('news-textarea').value.trim();
+    this.#newsText = text;
+    if (!this.#newsFileName && text) this.#newsFileName = '粘贴材料';
+    document.getElementById('news-wc').textContent = `${text.length} 字`;
+    document.getElementById('btn-submit-news').disabled = text.length === 0;
+  }
+
   async #submitNews() {
+    this.#onNewsInput();
     if (!this.#newsText) return;
     const key = this.#key;
     if (!key) return;
 
-    this.#setBtnLoading('btn-submit-news', true, '总结中…');
-    this.#setCenterLoading('正在提炼时政要点…');
+    this.#setBtnLoading('btn-submit-news', true, '精读中…');
+    this.#setCenterLoading('正在精读时政材料…');
 
     try {
-      const result = await ApiService.summarizeNews(key, this.#newsText);
+      const result = await ApiService.summarizePolicyNews(key, this.#newsText);
       const clean  = ApiService.cleanMarkdown(result);
       this.#memory.addNewsSummary({ fileName: this.#newsFileName, summary: clean });
       this.#setCenter(`
         <div class="review-section">
-          <div class="review-section-title">时政总结 · ${this.#esc(this.#newsFileName)}</div>
+          <div class="review-section-title">今日时政 · ${this.#esc(this.#newsFileName)}</div>
           <div class="review-section-body">${this.#esc(clean)}</div>
         </div>
       `);
     } catch (e) {
-      this.#setCenterError(`总结失败：${e.message}`);
+      this.#setCenterError(`今日时政提炼失败：${e.message}`);
     } finally {
-      this.#setBtnLoading('btn-submit-news', false, '总结提炼');
+      this.#setBtnLoading('btn-submit-news', false, '精读提炼');
+      this.#onNewsInput();
+    }
+  }
+
+  // ── Podcast ───────────────────────────────────────────────────────────────
+
+  #onPodcastInput() {
+    document.getElementById('btn-submit-podcast').disabled = false;
+  }
+
+  #onPodcastPolicyChange() {
+    const id = document.getElementById('podcast-policy').value;
+    const item = this.#allPolicyNews().find(x => x.id === id);
+    this.#podcastSourcePolicy = item || null;
+    const preview = document.getElementById('podcast-policy-preview');
+    if (!preview || !item) return;
+    preview.innerHTML = `
+      <div class="policy-source-title">${this.#esc(item.title)}</div>
+      <div>${this.#esc(item.summary)}</div>
+      <div style="margin-top:8px">政策意义：${this.#esc(item.significance)}</div>
+    `;
+  }
+
+  #formatPolicyContext(item) {
+    if (!item) return '';
+    return `【标题】\n${item.title}\n\n【日期】\n${item.date}\n\n【标签】\n${item.tag}\n\n【摘要】\n${item.summary}\n\n【背景概括】\n${item.background}\n\n【政策意义】\n${item.significance}\n\n【申论可用角度】\n${item.essayAngle}\n\n【面试可能问法】\n${item.interviewQuestion}\n\n【可背诵金句】\n${item.quote}\n\n【100字速记版】\n${item.memory}`;
+  }
+
+  async #submitPodcast() {
+    const id = document.getElementById('podcast-policy').value;
+    const item = this.#allPolicyNews().find(x => x.id === id);
+    if (!item) return;
+    const key = this.#key;
+    if (!key) return;
+
+    this.#setBtnLoading('btn-submit-podcast', true, '生成中…');
+    this.#setCenterLoading('正在生成3分钟双人播客脚本…');
+
+    try {
+      const text = this.#formatPolicyContext(item);
+      const result = await ApiService.generatePodcastScript(key, text);
+      const clean = ApiService.cleanMarkdown(result);
+      this.#setCenter(`
+        <div class="review-section">
+          <div class="review-section-title">双人播客脚本 · ${this.#esc(item.title)}</div>
+          <div class="review-section-body">${this.#esc(clean)}</div>
+        </div>
+      `);
+    } catch (e) {
+      this.#setCenterError(`播客脚本生成失败：${e.message}`);
+    } finally {
+      this.#setBtnLoading('btn-submit-podcast', false, '生成播客脚本');
     }
   }
 
@@ -1290,7 +2339,7 @@ class App {
 
     const newsHtml = newsSessions.length
       ? newsSessions.map(renderNewsCard).join('')
-      : '<p class="history-empty">暂无时政总结记录</p>';
+      : '<p class="history-empty">暂无今日时政记录</p>';
 
     const content = document.getElementById('history-content');
     content.innerHTML = `
@@ -1298,7 +2347,7 @@ class App {
       <div>${errHtml}</div>
       <div class="history-label">申论批改历史（最近记录）</div>
       ${essayHtml}
-      <div class="history-label">时政总结历史</div>
+      <div class="history-label">今日时政历史</div>
       ${newsHtml}
     `;
 
@@ -1317,26 +2366,30 @@ class App {
     if (!session?.summary) return;
     this.#setCenter(`
       <div class="review-section">
-        <div class="review-section-title">时政总结 · ${this.#esc(session.preview)}</div>
+        <div class="review-section-title">今日时政 · ${this.#esc(session.preview)}</div>
         <div class="review-section-body">${this.#esc(session.summary)}</div>
       </div>
     `);
     this.#closeOverlay('history-overlay');
     this.#switchTab('news');
-    this.#toast('已加载历史时政总结');
+    this.#toast('已加载历史今日时政');
   }
 
   #restoreSession(id) {
     const session = this.#memory.getSessions().find(s => s.id === id);
     if (!session) return;
 
-    // Restore essay text to input and show previous review in center
-    document.getElementById('essay-textarea').value = session.essay ?? session.preview;
+    document.getElementById('essay-topic').value = session.topic || '';
+    document.getElementById('essay-material').value = session.material || '';
+    document.getElementById('essay-textarea').value = session.answer || session.essay || session.preview;
     this.#onEssayInput();
     this.#essayText  = session.essay ?? session.preview;
+    this.#currentEssaySessionId = session.id;
 
     if (session.rawReview) {
       this.#lastReview = ReviewParser.parse(session.rawReview);
+      this.#reviewResult = this.#lastReview;
+      this.#rewriteResult = session.rewriteText || '';
       this.#renderReview(this.#lastReview);
     }
 
@@ -1345,12 +2398,396 @@ class App {
     this.#toast('已恢复上次作文，可继续修改或重新提交');
   }
 
+  #showMyPage() {
+    this.#exitReviewLayout();
+    this.#setBottomNav('mine');
+    document.querySelector('.feature-tabs').style.display = 'none';
+    document.getElementById('tab-essay').style.display = 'none';
+    document.getElementById('tab-interview').style.display = 'none';
+    document.getElementById('tab-news').style.display = 'none';
+    document.getElementById('tab-podcast').style.display = 'none';
+
+    const sessions = this.#memory.getSessions();
+    const essays = sessions.filter(s => s.type === 'essay' || !s.type);
+    const interviews = sessions.filter(s => s.type === 'interview');
+    const favorites = this.#memory.getFavorites();
+
+    const essayHtml = essays.length ? essays.map(s => `
+      <div class="my-card">
+        <div class="my-card-top">
+          <div class="my-card-title">${this.#esc(s.topic || s.preview || '申论批改')}</div>
+          <div class="my-card-date">${this.#formatDate(s.ts)}</div>
+        </div>
+        <div class="my-card-meta">总分：${s.score ?? '—'}</div>
+        <button class="btn-ghost btn-view-essay-record" data-id="${s.id}">查看详情</button>
+      </div>
+    `).join('') : '<div class="my-empty">暂无申论批改记录。完成一次批改后会自动保存到这里。</div>';
+
+    const interviewHtml = interviews.length ? interviews.map(s => `
+      <div class="my-card">
+        <div class="my-card-top">
+          <div class="my-card-title">${this.#esc(s.question || '面试模拟')}</div>
+          <div class="my-card-date">${this.#formatDate(s.ts)}</div>
+        </div>
+        <div class="my-card-meta">${this.#esc(s.jobType || '综合岗')}</div>
+        <div class="my-card-body">${this.#esc((s.reviewText || '').slice(0, 120))}${(s.reviewText || '').length > 120 ? '…' : ''}</div>
+      </div>
+    `).join('') : '<div class="my-empty">暂无面试记录。完成一次 AI点评后会自动保存。</div>';
+
+    const favoriteHtml = favorites.length ? favorites.map(item => `
+      <div class="my-card">
+        <div class="my-card-top">
+          <div class="my-card-title">${this.#esc(item.title)}</div>
+          <div class="my-card-date">${this.#formatDate(item.ts)}</div>
+        </div>
+        <div class="my-card-meta">${this.#esc(item.tag || '时政')}</div>
+        <div class="my-card-body">${this.#esc(item.summary || '')}</div>
+      </div>
+    `).join('') : '<div class="my-empty">暂无收藏时政。进入今日时政详情页点击“收藏”即可保存。</div>';
+
+    const cc = document.getElementById('single-result');
+    cc.style.display = 'block';
+    cc.innerHTML = `
+      <div class="result-topbar">
+        <button class="btn-ghost btn-back-home-inline">返回首页</button>
+      </div>
+      <div class="my-section">
+        <div class="my-section-title">我的批改记录</div>
+        ${essayHtml}
+      </div>
+      <div class="my-section">
+        <div class="my-section-title">我的面试记录</div>
+        ${interviewHtml}
+      </div>
+      <div class="my-section">
+        <div class="my-section-title">我的收藏时政</div>
+        ${favoriteHtml}
+      </div>
+    `;
+    cc.querySelector('.btn-back-home-inline').onclick = () => this.#showHome();
+    cc.querySelectorAll('.btn-view-essay-record').forEach(btn =>
+      btn.addEventListener('click', () => this.#restoreEssayRecord(btn.dataset.id))
+    );
+    cc.scrollTop = 0;
+  }
+
+  #restoreEssayRecord(id) {
+    const session = this.#memory.getSessions().find(s => s.id === id);
+    if (!session) return;
+    this.#currentEssaySessionId = session.id;
+    this.#essayText = session.essay || '';
+    this.#lastReview = ReviewParser.parse(session.rawReview || session.reviewText || '');
+    this.#reviewResult = this.#lastReview;
+    this.#rewriteResult = session.rewriteText || '';
+    this.#currentView = 'reviewResult';
+    document.getElementById('essay-topic').value = session.topic || '';
+    document.getElementById('essay-material').value = session.material || '';
+    document.getElementById('essay-textarea').value = session.answer || '';
+    this.#onEssayInput();
+    this.#renderReview(this.#lastReview);
+    this.#toast('已打开历史批改结果');
+  }
+
+  #formatDate(ts) {
+    if (!ts) return '';
+    return new Date(ts).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+  }
+
+  #openPolicyUpdateOverlay() {
+    document.getElementById('policy-update-textarea').value = '';
+    this.#openOverlay('policy-update-overlay');
+  }
+
+  async #generatePolicyCardFromInput() {
+    const textarea = document.getElementById('policy-update-textarea');
+    const text = textarea.value.trim();
+    if (!text) {
+      this.#toast('请先粘贴新闻或政策材料');
+      return;
+    }
+    const key = this.#key;
+    if (!key) return;
+
+    this.#setBtnLoading('btn-generate-policy-card', true, '生成中…');
+    try {
+      const raw = await ApiService.generatePolicyCard(key, text);
+      const card = this.#parsePolicyCard(raw, text);
+      const saved = this.#memory.addGeneratedPolicy(card);
+      this.#refreshPodcastOptions();
+      this.#closeOverlay('policy-update-overlay');
+      this.#showPolicyList();
+      this.#toast(`已生成时政卡片：${saved.title}`);
+    } catch (e) {
+      this.#toast(`生成失败：${e.message}`);
+    } finally {
+      this.#setBtnLoading('btn-generate-policy-card', false, 'AI生成时政考点');
+    }
+  }
+
+  #parsePolicyCard(raw, sourceText = '') {
+    const clean = ApiService.cleanMarkdown(raw);
+    const section = name => {
+      const re = new RegExp(`【${name}】\\s*\\n?([\\s\\S]*?)(?=\\n?【[^】]+】|$)`);
+      return clean.match(re)?.[1]?.trim() || '';
+    };
+    const today = new Date().toISOString().slice(0, 10);
+    const title = section('标题') || sourceText.slice(0, 18) || '今日时政';
+    const background = section('政策背景') || section('背景概括') || '';
+    return {
+      id: `policy-${Date.now().toString(36)}`,
+      date: today,
+      title,
+      tag: section('标签') || '今日更新',
+      summary: section('100字摘要') || clean.slice(0, 120),
+      background,
+      significance: section('政策意义') || background,
+      essayAngle: section('申论可用角度'),
+      interviewQuestion: section('面试可能问法'),
+      quote: section('可背诵金句'),
+      memory: section('100字速记版'),
+      raw: clean,
+      sourceText,
+    };
+  }
+
   // ── Feature tabs ──────────────────────────────────────────────────────────
 
+  #openHomeFeature(tab) {
+    if (tab === 'news') {
+      this.#setBottomNav('news');
+      this.#showPolicyList();
+      return;
+    }
+    if (tab === 'essay' || tab === 'interview' || tab === 'podcast') {
+      this.#setBottomNav('practice');
+      if (tab === 'interview') this.#interviewSourcePolicy = null;
+      if (tab === 'essay') this.#essaySourcePolicy = null;
+      this.#switchTab(tab);
+      return;
+    }
+    this.#setBottomNav(tab === 'news' ? 'news' : 'home');
+    this.#showStaticFeature(tab);
+  }
+
+  #openBottomNav(nav) {
+    this.#setBottomNav(nav);
+    if (nav === 'home') {
+      this.#showHome(false);
+      return;
+    }
+    if (nav === 'news') {
+      this.#showPolicyList();
+      return;
+    }
+    if (nav === 'practice') {
+      this.#showStaticPage('练习', '当前可进入“申论批改”进行完整练习。面试模拟暂为静态占位，后续会接入题库、录音和点评流程。', '进入申论批改', () => this.#switchTab('essay'));
+      return;
+    }
+    this.#showMyPage();
+  }
+
   #switchTab(tab) {
+    if (!['essay', 'interview', 'podcast'].includes(tab)) {
+      this.#showStaticFeature(tab);
+      return;
+    }
+    this.#exitReviewLayout();
+    document.querySelector('.feature-tabs').style.display = 'none';
+    document.getElementById('single-result').style.display = 'none';
     document.querySelectorAll('.feature-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-    document.getElementById('tab-essay').style.display = tab === 'essay' ? 'flex' : 'none';
-    document.getElementById('tab-news').style.display  = tab === 'news'  ? 'flex' : 'none';
+    document.getElementById('tab-essay').style.display     = tab === 'essay'     ? 'flex' : 'none';
+    document.getElementById('tab-interview').style.display = tab === 'interview' ? 'flex' : 'none';
+    document.getElementById('tab-news').style.display      = tab === 'news'      ? 'flex' : 'none';
+    document.getElementById('tab-podcast').style.display   = tab === 'podcast'   ? 'flex' : 'none';
+    if (tab === 'podcast') this.#onPodcastPolicyChange();
+  }
+
+  #showHome(updateNav = true) {
+    this.#exitReviewLayout();
+    if (updateNav) this.#setBottomNav('home');
+    document.querySelectorAll('.feature-tab').forEach(b => b.classList.remove('active'));
+    document.querySelector('.feature-tabs').style.display = 'grid';
+    document.getElementById('single-result').style.display = 'none';
+    document.getElementById('tab-essay').style.display = 'none';
+    document.getElementById('tab-interview').style.display = 'none';
+    document.getElementById('tab-news').style.display = 'none';
+    document.getElementById('tab-podcast').style.display = 'none';
+  }
+
+  #showStaticFeature(tab) {
+    const map = {
+      news: {
+        title: '今日时政',
+        body: '今日时政模块暂为静态占位。后续会提供热点精选、政策背景、申论角度、面试问法和速记金句。',
+      },
+      podcast: {
+        title: '双人播客',
+        body: '双人播客模块暂为静态占位。后续会把时政材料生成主持人A和主持人B的对话脚本，方便通勤复习。',
+      },
+      interview: {
+        title: '面试模拟',
+        body: '面试模拟模块暂为静态占位。后续会提供岗位题目、浏览器录音、手动转写和AI点评。',
+      },
+    };
+    const item = map[tab] || map.news;
+    this.#showStaticPage(item.title, item.body);
+  }
+
+  #showPolicyList() {
+    this.#exitReviewLayout();
+    this.#setBottomNav('news');
+    document.querySelector('.feature-tabs').style.display = 'none';
+    document.getElementById('tab-essay').style.display = 'none';
+    document.getElementById('tab-interview').style.display = 'none';
+    document.getElementById('tab-news').style.display = 'none';
+    document.getElementById('tab-podcast').style.display = 'none';
+    const cc = document.getElementById('single-result');
+    cc.style.display = 'block';
+    this.#refreshPodcastOptions();
+    const policies = this.#allPolicyNews();
+    cc.innerHTML = `
+      <div class="result-topbar">
+        <button class="btn-ghost btn-back-home-inline">返回首页</button>
+      </div>
+      <div class="policy-detail-actions" style="margin:0 0 12px">
+        <button class="btn-primary" id="btn-open-policy-update">更新今日时政</button>
+      </div>
+      ${policies.map(item => `
+        <div class="policy-card" data-policy-id="${item.id}">
+          <div class="policy-card-title">${this.#esc(item.title)}</div>
+          <div class="policy-card-meta">
+            <span>${this.#esc(item.date)}</span>
+            <span class="policy-tag">${this.#esc(item.tag)}</span>
+          </div>
+          <div class="policy-card-summary">${this.#esc(item.summary)}</div>
+          <div class="policy-card-more">查看详情</div>
+        </div>
+      `).join('')}
+    `;
+    cc.querySelector('.btn-back-home-inline').onclick = () => this.#showHome();
+    cc.querySelector('#btn-open-policy-update').onclick = () => this.#openPolicyUpdateOverlay();
+    cc.querySelectorAll('.policy-card').forEach(card =>
+      card.addEventListener('click', () => this.#showPolicyDetail(card.dataset.policyId))
+    );
+    cc.scrollTop = 0;
+  }
+
+  #showPolicyDetail(id) {
+    const item = this.#allPolicyNews().find(x => x.id === id);
+    if (!item) return;
+    this.#currentPolicyId = id;
+    const cc = document.getElementById('single-result');
+    cc.style.display = 'block';
+    cc.innerHTML = `
+      <div class="result-topbar">
+        <button class="btn-ghost" id="btn-back-policy-list">返回列表</button>
+      </div>
+      <div class="policy-detail-title">${this.#esc(item.title)}</div>
+      <div class="review-section">
+        <div class="review-section-title">背景概括</div>
+        <div class="review-section-body">${this.#esc(item.background)}</div>
+      </div>
+      <div class="review-section">
+        <div class="review-section-title">政策意义</div>
+        <div class="review-section-body">${this.#esc(item.significance)}</div>
+      </div>
+      <div class="review-section">
+        <div class="review-section-title">申论可用角度</div>
+        <div class="review-section-body">${this.#esc(item.essayAngle)}</div>
+      </div>
+      <div class="review-section">
+        <div class="review-section-title">面试可能问法</div>
+        <div class="review-section-body">${this.#esc(item.interviewQuestion)}</div>
+      </div>
+      <div class="review-section">
+        <div class="review-section-title">可背诵金句</div>
+        <div class="review-section-body">${this.#esc(item.quote)}</div>
+      </div>
+      <div class="review-section">
+        <div class="review-section-title">100字速记版</div>
+        <div class="review-section-body">${this.#esc(item.memory)}</div>
+      </div>
+      <div class="policy-detail-actions">
+        <button class="btn-ghost" id="btn-policy-favorite">收藏</button>
+        <button class="btn-primary" id="btn-policy-podcast">生成双人播客</button>
+        <button class="btn-ghost" id="btn-policy-interview">去面试模拟</button>
+        <button class="btn-ghost" id="btn-policy-essay">用作申论素材</button>
+      </div>
+    `;
+    document.getElementById('btn-back-policy-list').onclick = () => this.#showPolicyList();
+    document.getElementById('btn-policy-favorite').onclick = () => this.#favoritePolicy(item);
+    document.getElementById('btn-policy-podcast').onclick = () => this.#openPodcastFromPolicy(item.id);
+    document.getElementById('btn-policy-interview').onclick = () => this.#openInterviewFromPolicy(item);
+    document.getElementById('btn-policy-essay').onclick = () => this.#openEssayFromPolicy(item);
+    cc.scrollTop = 0;
+  }
+
+  #openPodcastFromPolicy(id) {
+    this.#setBottomNav('practice');
+    this.#switchTab('podcast');
+    document.getElementById('podcast-policy').value = id;
+    this.#currentPolicyId = id;
+    this.#podcastSourcePolicy = this.#allPolicyNews().find(x => x.id === id) || null;
+    this.#onPodcastPolicyChange();
+  }
+
+  #favoritePolicy(item) {
+    this.#memory.addFavoritePolicy(item);
+    this.#toast('已收藏到“我的”');
+  }
+
+  #openInterviewFromPolicy(item) {
+    this.#setBottomNav('practice');
+    this.#switchTab('interview');
+    document.getElementById('interview-answer').value = '';
+    this.#currentPolicyId = item.id;
+    this.#interviewSourcePolicy = item;
+    this.#interviewQuestion = item.interviewQuestion;
+    const box = document.getElementById('interview-question-box');
+    box.textContent = item.interviewQuestion;
+    box.classList.remove('empty');
+    this.#onInterviewAnswerInput();
+  }
+
+  #openEssayFromPolicy(item) {
+    this.#setBottomNav('practice');
+    this.#switchTab('essay');
+    this.#currentPolicyId = item.id;
+    this.#essaySourcePolicy = item;
+    document.getElementById('essay-topic').value = `请结合“${item.title}”相关材料，自选角度写一段申论分析。`;
+    document.getElementById('essay-material').value = `【${item.title}】\n${item.summary}\n\n背景概括：${item.background}\n\n政策意义：${item.significance}\n\n申论可用角度：${item.essayAngle}\n\n可背诵金句：${item.quote}\n\n100字速记版：${item.memory}`;
+    this.#onEssayInput();
+  }
+
+  #showStaticPage(title, body, actionText = '', action = null) {
+    this.#exitReviewLayout();
+    document.querySelector('.feature-tabs').style.display = 'none';
+    document.getElementById('tab-essay').style.display = 'none';
+    document.getElementById('tab-interview').style.display = 'none';
+    document.getElementById('tab-news').style.display = 'none';
+    document.getElementById('tab-podcast').style.display = 'none';
+    const cc = document.getElementById('single-result');
+    cc.style.display = 'block';
+    cc.innerHTML = `
+      <div class="result-topbar">
+        <button class="btn-ghost btn-back-home-inline">返回首页</button>
+      </div>
+      <div class="placeholder-card">
+        <div class="placeholder-card-title">${this.#esc(title)}</div>
+        <div class="placeholder-card-body">${this.#esc(body)}</div>
+        ${actionText ? `<button class="btn-primary" id="static-action" style="margin-top:14px">${this.#esc(actionText)}</button>` : ''}
+      </div>
+    `;
+    cc.querySelector('.btn-back-home-inline').onclick = () => this.#showHome();
+    const btn = cc.querySelector('#static-action');
+    if (btn && action) btn.onclick = action;
+    cc.scrollTop = 0;
+  }
+
+  #setBottomNav(nav) {
+    document.querySelectorAll('.bottom-nav-btn').forEach(btn =>
+      btn.classList.toggle('active', btn.dataset.nav === nav)
+    );
   }
 
   // ── Overlay ───────────────────────────────────────────────────────────────
@@ -1361,15 +2798,26 @@ class App {
   // ── Center panel helpers ──────────────────────────────────────────────────
 
   #showPlaceholder() {
-    document.getElementById('center-placeholder').style.display = '';
-    document.getElementById('center-content').style.display     = 'none';
+    this.#exitReviewLayout();
+    this.#showHome();
   }
 
   #setCenter(html) {
-    document.getElementById('center-placeholder').style.display = 'none';
-    const cc = document.getElementById('center-content');
-    cc.style.display = '';
-    document.getElementById('center-inner').innerHTML = html;
+    document.querySelector('.feature-tabs').style.display = 'none';
+    document.getElementById('tab-essay').style.display = 'none';
+    document.getElementById('tab-interview').style.display = 'none';
+    document.getElementById('tab-news').style.display = 'none';
+    document.getElementById('tab-podcast').style.display = 'none';
+    const cc = document.getElementById('single-result');
+    cc.style.display = 'block';
+    cc.innerHTML = `
+      <div class="result-topbar">
+        <button class="btn-ghost btn-back-home-inline">返回首页</button>
+      </div>
+      ${html}
+    `;
+    const back = cc.querySelector('.btn-back-home-inline');
+    if (back) back.onclick = () => this.#showHome();
     cc.scrollTop = 0;
   }
 

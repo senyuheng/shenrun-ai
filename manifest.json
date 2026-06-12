@@ -1,0 +1,32 @@
+{
+  "name": "AI公考Copilot",
+  "appid": "__UNI__TEST001",
+  "description": "面向公考备考的AI学习Copilot",
+  "versionName": "0.1.0",
+  "versionCode": "100",
+  "app-plus": {
+    "usingComponents": true,
+    "nvueCompiler": "uni-app",
+    "splashscreen": {
+      "alwaysShowBeforeRender": true,
+      "waiting": true,
+      "autoclose": true,
+      "delay": 0
+    },
+    "modules": {}
+  },
+  "h5": {
+    "title": "AI公考Copilot",
+    "router": {
+      "mode": "hash",
+      "base": "/"
+    }
+  },
+  "mp-weixin": {
+    "appid": "",
+    "setting": {
+      "urlCheck": false
+    },
+    "usingComponents": true
+  }
+}
